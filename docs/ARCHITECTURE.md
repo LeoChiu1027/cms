@@ -1,96 +1,229 @@
 # CMS Architecture Documentation
 
-## System Architecture
+## High-Level System Overview
 
 ```mermaid
 graph TB
-    subgraph "Client Layer"
+    CLIENT[Client Applications]-->GATEWAY[API Gateway]
+    GATEWAY-->APP[NestJS Application]
+    APP-->DATA[Data Layer]
+    
+    style CLIENT fill:#e1f5ff
+    style GATEWAY fill:#fff3e0
+    style APP fill:#e8f5e9
+    style DATA fill:#fce4ec
+```
+
+### Layer Breakdown
+
+- **Client Layer**: Web Dashboard, Mobile Apps, API Clients
+- **API Gateway**: NGINX (Load Balancing, Rate Limiting, SSL)
+- **Application Layer**: NestJS Modules (Auth, RBAC, Content, Workflow, Approval)
+- **Data Layer**: PostgreSQL, Redis, S3
+
+---
+
+## Complete System Architecture
+
+```mermaid
+graph TB
+    subgraph CLIENT_LAYER["📱 Client Layer"]
         WEB[Web Dashboard]
+        MOBILE[Mobile Apps]
         API_CLIENT[API Clients]
     end
 
-    subgraph "API Gateway Layer"
-        NGINX[NGINX / API Gateway]
+    subgraph GATEWAY_LAYER["🚪 API Gateway"]
+        NGINX[NGINX]
     end
 
-    subgraph "NestJS Application"
-        subgraph "Auth & Security"
-            AUTH[Auth Module]
+    subgraph APP_LAYER["⚙️ NestJS Application"]
+        direction TB
+        
+        subgraph AUTH_LAYER["🔐 Security"]
+            AUTH[Auth]
             RBAC[RBAC Guard]
-            JWT[JWT Strategy]
         end
-
-        subgraph "Core Modules"
-            USER[Users Module]
-            ROLE[Roles Module]
-            PERM[Permissions Module]
+        
+        subgraph CORE_LAYER["👥 Core"]
+            USERS[Users]
+            ROLES[Roles]
+            PERMS[Permissions]
         end
-
-        subgraph "CMS Modules"
-            CONTENT[Content Module]
-            CATEGORY[Categories Module]
-            MEDIA[Media Module]
-            WORKFLOW[Workflow Module]
-            APPROVAL[Approval Module]
-            AUDIT[Audit Log Module]
+        
+        subgraph CMS_LAYER["📝 CMS"]
+            CONTENT[Content]
+            WORKFLOW[Workflow]
+            APPROVAL[Approval]
+            MEDIA[Media]
+            CATEGORIES[Categories]
         end
-
-        subgraph "Notification"
-            NOTIF[Notifications Module]
-            EMAIL[Email Service]
+        
+        subgraph SUPPORT_LAYER["🔔 Support"]
+            NOTIF[Notifications]
+            AUDIT[Audit Logs]
         end
     end
 
-    subgraph "Data Layer"
+    subgraph DATA_LAYER["💾 Data Layer"]
+        direction LR
         DB[(PostgreSQL)]
-        REDIS[(Redis Cache)]
-        S3[Object Storage]
+        REDIS[(Redis)]
+        S3[S3 Storage]
     end
 
+    %% Client to Gateway
     WEB --> NGINX
+    MOBILE --> NGINX
     API_CLIENT --> NGINX
+    
+    %% Gateway to Auth
     NGINX --> AUTH
     
-    AUTH --> JWT
+    %% Auth flows
     AUTH --> RBAC
-    RBAC --> PERM
+    RBAC -.checks.-> PERMS
     
-    USER --> ROLE
-    ROLE --> PERM
+    %% Core relationships
+    USERS -.has.-> ROLES
+    ROLES -.has.-> PERMS
     
+    %% CMS flows
     CONTENT --> WORKFLOW
-    CONTENT --> MEDIA
-    CONTENT --> CATEGORY
     WORKFLOW --> APPROVAL
+    CONTENT -.uses.-> MEDIA
+    CONTENT -.categorized by.-> CATEGORIES
+    
+    %% Support services
     APPROVAL --> NOTIF
-    NOTIF --> EMAIL
+    CONTENT -.logs to.-> AUDIT
+    APPROVAL -.logs to.-> AUDIT
     
-    CONTENT --> AUDIT
-    APPROVAL --> AUDIT
-    USER --> AUDIT
-    
-    USER --> DB
-    ROLE --> DB
-    PERM --> DB
+    %% Data layer connections
+    USERS --> DB
+    ROLES --> DB
     CONTENT --> DB
     WORKFLOW --> DB
     APPROVAL --> DB
-    AUDIT --> DB
     
-    CONTENT --> REDIS
-    USER --> REDIS
+    RBAC -.cache.-> REDIS
+    AUTH -.sessions.-> REDIS
     
     MEDIA --> S3
-
-    classDef authStyle fill:#ff9999
-    classDef coreStyle fill:#99ccff
-    classDef cmsStyle fill:#99ff99
-    classDef dataStyle fill:#ffcc99
     
-    class AUTH,RBAC,JWT authStyle
-    class USER,ROLE,PERM coreStyle
-    class CONTENT,WORKFLOW,APPROVAL,MEDIA,CATEGORY,AUDIT,NOTIF cmsStyle
-    class DB,REDIS,S3 dataStyle
+    %% Styling
+    style CLIENT_LAYER fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style GATEWAY_LAYER fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style APP_LAYER fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style DATA_LAYER fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    
+    style AUTH_LAYER fill:#ffcdd2
+    style CORE_LAYER fill:#bbdefb
+    style CMS_LAYER fill:#c8e6c9
+    style SUPPORT_LAYER fill:#fff9c4
+```
+
+---
+
+## Detailed Architecture Views
+
+### 1. Application Layer Architecture
+
+```mermaid
+graph TB
+    subgraph "Auth & Security Layer"
+        AUTH[Auth Module]
+        GUARD[RBAC Guard]
+    end
+    
+    subgraph "Core Modules"
+        USER[Users]
+        ROLE[Roles]
+        PERM[Permissions]
+    end
+    
+    subgraph "CMS Modules"
+        CONTENT[Content]
+        WORKFLOW[Workflow]
+        APPROVAL[Approval]
+        MEDIA[Media]
+        CATEGORY[Categories]
+    end
+    
+    subgraph "Supporting Services"
+        NOTIF[Notifications]
+        AUDIT[Audit Logs]
+    end
+    
+    AUTH-->GUARD
+    GUARD-->PERM
+    USER-->ROLE-->PERM
+    
+    CONTENT-->WORKFLOW-->APPROVAL
+    CONTENT-->MEDIA
+    CONTENT-->CATEGORY
+    
+    APPROVAL-->NOTIF
+    CONTENT-->AUDIT
+    APPROVAL-->AUDIT
+    
+    style AUTH fill:#ffcdd2
+    style GUARD fill:#ffcdd2
+    style USER fill:#bbdefb
+    style ROLE fill:#bbdefb
+    style PERM fill:#bbdefb
+    style CONTENT fill:#c8e6c9
+    style WORKFLOW fill:#c8e6c9
+    style APPROVAL fill:#c8e6c9
+    style MEDIA fill:#c8e6c9
+    style CATEGORY fill:#c8e6c9
+```
+
+### 2. Data Layer Architecture
+
+```mermaid
+graph LR
+    APP[Application]
+    
+    subgraph "Persistent Storage"
+        DB[(PostgreSQL<br/>Primary Data)]
+    end
+    
+    subgraph "Cache Layer"
+        REDIS[(Redis<br/>Session & Cache)]
+    end
+    
+    subgraph "Object Storage"
+        S3[S3<br/>Media Files]
+    end
+    
+    APP-->|User/Content/Workflow|DB
+    APP-->|Permissions/Session|REDIS
+    APP-->|Images/Files|S3
+    
+    style DB fill:#e1bee7
+    style REDIS fill:#ffccbc
+    style S3 fill:#c5e1a5
+```
+
+### 3. Request Flow Through Layers
+
+```mermaid
+graph LR
+    CLIENT[Client]-->NGINX[NGINX]
+    NGINX-->AUTH[Auth Check]
+    AUTH-->RBAC[Permission Check]
+    RBAC-->CONTROLLER[Controller]
+    CONTROLLER-->SERVICE[Service]
+    SERVICE-->DB[(Database)]
+    
+    style CLIENT fill:#e3f2fd
+    style NGINX fill:#fff9c4
+    style AUTH fill:#ffccbc
+    style RBAC fill:#ffccbc
+    style CONTROLLER fill:#c8e6c9
+    style SERVICE fill:#c8e6c9
+    style DB fill:#e1bee7
 ```
 
 ## Content Approval Workflow Sequence
