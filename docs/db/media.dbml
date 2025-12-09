@@ -1,0 +1,68 @@
+// ===========================================
+// MEDIA MANAGEMENT
+// Dependencies: auth.dbml (users), content.dbml (contents)
+// ===========================================
+
+// -------------------------------------------
+// External References
+// -------------------------------------------
+
+Table users {
+  id uuid [pk]
+  Note: 'Reference only - defined in auth.dbml'
+}
+
+Table contents {
+  id uuid [pk]
+  Note: 'Reference only - defined in content.dbml'
+}
+
+// -------------------------------------------
+// Media Tables
+// -------------------------------------------
+
+Table media {
+  id uuid [pk, default: `gen_random_uuid()`]
+  filename varchar(255) [not null]
+  original_filename varchar(255) [not null]
+  mime_type varchar(100) [not null]
+  file_size bigint [not null]
+  storage_path varchar(500) [not null]
+  storage_provider varchar(50) [default: 's3']
+  width int
+  height int
+  alt_text varchar(255)
+  caption text
+  metadata jsonb [default: '{}']
+  uploaded_by uuid [ref: > users.id, not null]
+  created_at timestamp [default: `now()`, not null]
+  updated_at timestamp [default: `now()`, not null]
+  deleted_at timestamp
+
+  indexes {
+    filename [name: 'idx_media_filename']
+    mime_type [name: 'idx_media_mime_type']
+    uploaded_by [name: 'idx_media_uploaded_by']
+    created_at [name: 'idx_media_created']
+  }
+
+  Note: 'Media assets with soft delete. metadata stores EXIF, dimensions, etc.'
+}
+
+Table content_media {
+  id uuid [pk, default: `gen_random_uuid()`]
+  content_id uuid [ref: > contents.id, not null]
+  media_id uuid [ref: > media.id, not null]
+  field_name varchar(100) [not null]
+  sort_order int [default: 0]
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    (content_id, media_id, field_name) [unique, name: 'idx_content_media_unique']
+    content_id [name: 'idx_content_media_content']
+    media_id [name: 'idx_content_media_media']
+    (content_id, field_name, sort_order) [name: 'idx_content_media_sorted']
+  }
+
+  Note: 'Many-to-many: content <-> media with field context'
+}

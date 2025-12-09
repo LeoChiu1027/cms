@@ -1,0 +1,109 @@
+// ===========================================
+// WORKFLOW & APPROVAL TABLES
+// Dependencies: auth.dbml (users), content.dbml (contents)
+// ===========================================
+
+// -------------------------------------------
+// Enums
+// -------------------------------------------
+
+Enum content_status {
+  draft
+  pending_review
+  in_review
+  changes_requested
+  approved
+  rejected
+  scheduled
+  published
+  archived
+}
+
+Enum approval_action {
+  approve
+  reject
+  request_changes
+  comment
+}
+
+// -------------------------------------------
+// External References
+// -------------------------------------------
+
+Table users {
+  id uuid [pk]
+  Note: 'Reference only - defined in auth.dbml'
+}
+
+Table contents {
+  id uuid [pk]
+  Note: 'Reference only - defined in content.dbml'
+}
+
+// -------------------------------------------
+// Workflow Tables
+// -------------------------------------------
+
+Table workflows {
+  id uuid [pk, default: `gen_random_uuid()`]
+  content_id uuid [ref: > contents.id, not null]
+  current_status content_status [not null]
+  previous_status content_status
+  assigned_to uuid [ref: > users.id]
+  priority int [default: 0]
+  due_date timestamp
+  started_at timestamp
+  completed_at timestamp
+  created_at timestamp [default: `now()`, not null]
+  updated_at timestamp [default: `now()`, not null]
+
+  indexes {
+    content_id [name: 'idx_workflows_content']
+    current_status [name: 'idx_workflows_status']
+    assigned_to [name: 'idx_workflows_assigned']
+    (current_status, assigned_to) [name: 'idx_workflows_status_assigned']
+    due_date [name: 'idx_workflows_due_date']
+    (current_status, priority) [name: 'idx_workflows_status_priority']
+  }
+
+  Note: 'Tracks current workflow state for content items'
+}
+
+Table approvals {
+  id uuid [pk, default: `gen_random_uuid()`]
+  workflow_id uuid [ref: > workflows.id, not null]
+  reviewer_id uuid [ref: > users.id, not null]
+  action approval_action [not null]
+  comment text
+  from_status content_status [not null]
+  to_status content_status [not null]
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    workflow_id [name: 'idx_approvals_workflow']
+    reviewer_id [name: 'idx_approvals_reviewer']
+    (workflow_id, created_at) [name: 'idx_approvals_workflow_time']
+    action [name: 'idx_approvals_action']
+  }
+
+  Note: 'Approval history for each workflow transition'
+}
+
+Table workflow_assignments {
+  id uuid [pk, default: `gen_random_uuid()`]
+  workflow_id uuid [ref: > workflows.id, not null]
+  user_id uuid [ref: > users.id, not null]
+  role varchar(50) [not null]
+  assigned_by uuid [ref: > users.id]
+  assigned_at timestamp [default: `now()`, not null]
+  completed_at timestamp
+
+  indexes {
+    (workflow_id, user_id) [name: 'idx_workflow_assignments_unique']
+    workflow_id [name: 'idx_workflow_assignments_workflow']
+    user_id [name: 'idx_workflow_assignments_user']
+    (user_id, completed_at) [name: 'idx_workflow_assignments_pending']
+  }
+
+  Note: 'Track who is assigned to review/approve content'
+}

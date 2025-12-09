@@ -1,0 +1,45 @@
+// ===========================================
+// AUTH TABLES
+// Dependencies: None (base module)
+// ===========================================
+
+Table users {
+  id uuid [pk, default: `gen_random_uuid()`]
+  email varchar(255) [unique, not null]
+  password_hash varchar(255) [not null]
+  first_name varchar(100)
+  last_name varchar(100)
+  avatar_url varchar(500)
+  is_active boolean [default: true, not null]
+  email_verified_at timestamp
+  last_login_at timestamp
+  created_at timestamp [default: `now()`, not null]
+  updated_at timestamp [default: `now()`, not null]
+  deleted_at timestamp
+
+  indexes {
+    email [unique, name: 'idx_users_email']
+    is_active [name: 'idx_users_active']
+    (is_active, deleted_at) [name: 'idx_users_active_not_deleted']
+  }
+
+  Note: 'Core user table with soft delete support'
+}
+
+Table sessions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [ref: > users.id, not null]
+  token_hash varchar(255) [unique, not null]
+  ip_address varchar(45)
+  user_agent varchar(500)
+  expires_at timestamp [not null]
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    token_hash [unique, name: 'idx_sessions_token']
+    user_id [name: 'idx_sessions_user']
+    expires_at [name: 'idx_sessions_expires']
+  }
+
+  Note: 'User session management for JWT refresh tokens'
+}

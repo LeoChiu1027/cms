@@ -1,0 +1,78 @@
+// ===========================================
+// SYSTEM TABLES (Audit & Settings)
+// Dependencies: auth.dbml (users)
+// ===========================================
+
+// -------------------------------------------
+// Enums
+// -------------------------------------------
+
+Enum audit_action {
+  create
+  update
+  delete
+  publish
+  unpublish
+  submit
+  approve
+  reject
+}
+
+// -------------------------------------------
+// External References
+// -------------------------------------------
+
+Table users {
+  id uuid [pk]
+  Note: 'Reference only - defined in auth.dbml'
+}
+
+// -------------------------------------------
+// Audit & Logging
+// -------------------------------------------
+
+Table audit_logs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [ref: > users.id]
+  action audit_action [not null]
+  entity_type varchar(50) [not null]
+  entity_id uuid [not null]
+  old_values jsonb
+  new_values jsonb
+  ip_address varchar(45)
+  user_agent varchar(500)
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    user_id [name: 'idx_audit_logs_user']
+    entity_type [name: 'idx_audit_logs_entity_type']
+    (entity_type, entity_id) [name: 'idx_audit_logs_entity']
+    action [name: 'idx_audit_logs_action']
+    created_at [name: 'idx_audit_logs_created']
+    (entity_type, entity_id, created_at) [name: 'idx_audit_logs_entity_time']
+  }
+
+  Note: 'Immutable audit trail. Never update or delete rows.'
+}
+
+// -------------------------------------------
+// Settings & Configuration
+// -------------------------------------------
+
+Table settings {
+  id uuid [pk, default: `gen_random_uuid()`]
+  key varchar(100) [unique, not null]
+  value jsonb [not null]
+  description text
+  is_public boolean [default: false]
+  updated_by uuid [ref: > users.id]
+  created_at timestamp [default: `now()`, not null]
+  updated_at timestamp [default: `now()`, not null]
+
+  indexes {
+    key [unique, name: 'idx_settings_key']
+    is_public [name: 'idx_settings_public']
+  }
+
+  Note: 'System-wide settings. is_public=true exposes to frontend.'
+}

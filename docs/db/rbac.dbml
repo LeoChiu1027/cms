@@ -1,0 +1,82 @@
+// ===========================================
+// RBAC TABLES
+// Dependencies: auth.dbml (users)
+// ===========================================
+
+// -------------------------------------------
+// External Reference: users (from auth.dbml)
+// -------------------------------------------
+Table users {
+  id uuid [pk]
+  Note: 'Reference only - defined in auth.dbml'
+}
+
+// -------------------------------------------
+// RBAC Tables
+// -------------------------------------------
+
+Table roles {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(100) [unique, not null]
+  slug varchar(100) [unique, not null]
+  description text
+  is_system boolean [default: false, not null]
+  created_at timestamp [default: `now()`, not null]
+  updated_at timestamp [default: `now()`, not null]
+
+  indexes {
+    slug [unique, name: 'idx_roles_slug']
+    is_system [name: 'idx_roles_system']
+  }
+
+  Note: 'System and custom roles. is_system=true prevents deletion'
+}
+
+Table permissions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(100) [unique, not null]
+  slug varchar(100) [unique, not null]
+  resource varchar(50) [not null]
+  action varchar(50) [not null]
+  description text
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    slug [unique, name: 'idx_permissions_slug']
+    resource [name: 'idx_permissions_resource']
+    (resource, action) [name: 'idx_permissions_resource_action']
+  }
+
+  Note: 'Granular permissions: resource=content, action=create/read/update/delete/publish'
+}
+
+Table role_permissions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  role_id uuid [ref: > roles.id, not null]
+  permission_id uuid [ref: > permissions.id, not null]
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    (role_id, permission_id) [unique, name: 'idx_role_permissions_unique']
+    role_id [name: 'idx_role_permissions_role']
+    permission_id [name: 'idx_role_permissions_permission']
+  }
+
+  Note: 'Many-to-many: roles <-> permissions'
+}
+
+Table user_roles {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [ref: > users.id, not null]
+  role_id uuid [ref: > roles.id, not null]
+  assigned_by uuid [ref: > users.id]
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    (user_id, role_id) [unique, name: 'idx_user_roles_unique']
+    user_id [name: 'idx_user_roles_user']
+    role_id [name: 'idx_user_roles_role']
+  }
+
+  Note: 'Many-to-many: users <-> roles'
+}

@@ -1,0 +1,227 @@
+// ===========================================
+// CONTENT TABLES (Polymorphic Pattern)
+// Dependencies: auth.dbml (users), media.dbml (media)
+// ===========================================
+
+// -------------------------------------------
+// Enums
+// -------------------------------------------
+
+Enum content_status {
+  draft
+  pending_review
+  in_review
+  changes_requested
+  approved
+  rejected
+  scheduled
+  published
+  archived
+}
+
+Enum content_type {
+  product
+  blog
+  page
+  category
+}
+
+// -------------------------------------------
+// External References
+// -------------------------------------------
+
+Table users {
+  id uuid [pk]
+  Note: 'Reference only - defined in auth.dbml'
+}
+
+Table media {
+  id uuid [pk]
+  Note: 'Reference only - defined in media.dbml'
+}
+
+// -------------------------------------------
+// Base Content Table
+// -------------------------------------------
+
+Table contents {
+  id uuid [pk, default: `gen_random_uuid()`]
+  content_type content_type [not null]
+  status content_status [default: 'draft', not null]
+  slug varchar(255) [not null]
+  locale varchar(10) [default: 'en', not null]
+  version int [default: 1, not null]
+  is_latest boolean [default: true, not null]
+  published_at timestamp
+  scheduled_at timestamp
+  created_by uuid [ref: > users.id, not null]
+  updated_by uuid [ref: > users.id]
+  created_at timestamp [default: `now()`, not null]
+  updated_at timestamp [default: `now()`, not null]
+  deleted_at timestamp
+
+  indexes {
+    slug [name: 'idx_contents_slug']
+    (slug, locale) [unique, name: 'idx_contents_slug_locale_unique']
+    content_type [name: 'idx_contents_type']
+    status [name: 'idx_contents_status']
+    (content_type, status) [name: 'idx_contents_type_status']
+    (content_type, status, is_latest) [name: 'idx_contents_type_status_latest']
+    created_by [name: 'idx_contents_created_by']
+    published_at [name: 'idx_contents_published']
+    (status, scheduled_at) [name: 'idx_contents_scheduled']
+  }
+
+  Note: 'Base content table. All content types extend this via 1:1 relation.'
+}
+
+// -------------------------------------------
+// Content Type: Product
+// -------------------------------------------
+
+Table products {
+  id uuid [pk, default: `gen_random_uuid()`]
+  content_id uuid [ref: - contents.id, unique, not null]
+  name varchar(255) [not null]
+  description text
+  short_description varchar(500)
+  sku varchar(100)
+  price decimal(10,2)
+  compare_at_price decimal(10,2)
+  currency varchar(3) [default: 'USD']
+  stock_quantity int [default: 0]
+  is_featured boolean [default: false]
+  attributes jsonb [default: '{}']
+  seo_title varchar(255)
+  seo_description varchar(500)
+  seo_keywords varchar(255)
+
+  indexes {
+    content_id [unique, name: 'idx_products_content']
+    sku [unique, name: 'idx_products_sku']
+    name [name: 'idx_products_name']
+    is_featured [name: 'idx_products_featured']
+    price [name: 'idx_products_price']
+  }
+
+  Note: 'Product-specific fields. Linked 1:1 with contents table.'
+}
+
+// -------------------------------------------
+// Content Type: Blog
+// -------------------------------------------
+
+Table blogs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  content_id uuid [ref: - contents.id, unique, not null]
+  title varchar(255) [not null]
+  excerpt text
+  body text [not null]
+  featured_image_id uuid [ref: > media.id]
+  reading_time_minutes int
+  is_featured boolean [default: false]
+  seo_title varchar(255)
+  seo_description varchar(500)
+  seo_keywords varchar(255)
+
+  indexes {
+    content_id [unique, name: 'idx_blogs_content']
+    title [name: 'idx_blogs_title']
+    is_featured [name: 'idx_blogs_featured']
+  }
+
+  Note: 'Blog-specific fields. Linked 1:1 with contents table.'
+}
+
+// -------------------------------------------
+// Categories (Hierarchical)
+// -------------------------------------------
+
+Table categories {
+  id uuid [pk, default: `gen_random_uuid()`]
+  content_id uuid [ref: - contents.id, unique, not null]
+  name varchar(255) [not null]
+  description text
+  parent_id uuid [ref: > categories.id]
+  sort_order int [default: 0]
+  icon varchar(100)
+
+  indexes {
+    content_id [unique, name: 'idx_categories_content']
+    parent_id [name: 'idx_categories_parent']
+    sort_order [name: 'idx_categories_sort']
+    (parent_id, sort_order) [name: 'idx_categories_parent_sort']
+  }
+
+  Note: 'Hierarchical categories with self-referencing parent.'
+}
+
+Table content_categories {
+  id uuid [pk, default: `gen_random_uuid()`]
+  content_id uuid [ref: > contents.id, not null]
+  category_id uuid [ref: > categories.id, not null]
+  is_primary boolean [default: false]
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    (content_id, category_id) [unique, name: 'idx_content_categories_unique']
+    content_id [name: 'idx_content_categories_content']
+    category_id [name: 'idx_content_categories_category']
+    (content_id, is_primary) [name: 'idx_content_categories_primary']
+  }
+
+  Note: 'Many-to-many: content <-> categories'
+}
+
+// -------------------------------------------
+// Tags
+// -------------------------------------------
+
+Table tags {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(100) [unique, not null]
+  slug varchar(100) [unique, not null]
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    slug [unique, name: 'idx_tags_slug']
+    name [name: 'idx_tags_name']
+  }
+}
+
+Table content_tags {
+  id uuid [pk, default: `gen_random_uuid()`]
+  content_id uuid [ref: > contents.id, not null]
+  tag_id uuid [ref: > tags.id, not null]
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    (content_id, tag_id) [unique, name: 'idx_content_tags_unique']
+    content_id [name: 'idx_content_tags_content']
+    tag_id [name: 'idx_content_tags_tag']
+  }
+
+  Note: 'Many-to-many: content <-> tags'
+}
+
+// -------------------------------------------
+// Content Versioning
+// -------------------------------------------
+
+Table content_versions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  content_id uuid [ref: > contents.id, not null]
+  version_number int [not null]
+  data_snapshot jsonb [not null]
+  change_summary varchar(500)
+  created_by uuid [ref: > users.id, not null]
+  created_at timestamp [default: `now()`, not null]
+
+  indexes {
+    (content_id, version_number) [unique, name: 'idx_content_versions_unique']
+    content_id [name: 'idx_content_versions_content']
+    created_at [name: 'idx_content_versions_created']
+  }
+
+  Note: 'Content version history. data_snapshot stores complete content state.'
+}
