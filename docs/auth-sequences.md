@@ -30,8 +30,9 @@ sequenceDiagram
     AS->>AS: Generate refresh token (JWT, 7d)
     AS->>AS: Hash refresh token
     AS->>DB: Insert session (token_hash, user_id, expires_at)
-    AS-->>AC: {accessToken, refreshToken, user}
-    AC-->>C: 201 Created {accessToken, refreshToken, expiresIn, user}
+    AS-->>AC: {accessToken, user} + refreshToken
+    AC->>AC: Set HTTP-only cookie (refresh_token)
+    AC-->>C: 201 Created {accessToken, expiresIn, user} + Set-Cookie header
 ```
 
 ## 2. User Login Flow
@@ -70,8 +71,9 @@ sequenceDiagram
     AS->>AS: Generate refresh token (JWT, 7d)
     AS->>AS: Hash refresh token
     AS->>DB: Insert session (token_hash, user_id, ip, user_agent, expires_at)
-    AS-->>AC: {accessToken, refreshToken, user}
-    AC-->>C: 200 OK {accessToken, refreshToken, expiresIn, user}
+    AS-->>AC: {accessToken, user} + refreshToken
+    AC->>AC: Set HTTP-only cookie (refresh_token)
+    AC-->>C: 200 OK {accessToken, expiresIn, user} + Set-Cookie header
 ```
 
 ## 3. Token Refresh Flow
@@ -83,8 +85,8 @@ sequenceDiagram
     participant AS as AuthService
     participant DB as Database
 
-    C->>AC: POST /auth/refresh {refreshToken}
-    AC->>AC: Validate DTO
+    C->>AC: POST /auth/refresh (Cookie: refresh_token=xxx)
+    AC->>AC: Extract refresh token from cookie
     AC->>AS: refreshTokens(refreshToken)
     AS->>AS: Verify JWT signature
 
@@ -120,8 +122,9 @@ sequenceDiagram
     AS->>AS: Generate new refresh token
     AS->>AS: Hash new refresh token
     AS->>DB: Insert new session
-    AS-->>AC: {accessToken, refreshToken, user}
-    AC-->>C: 200 OK {accessToken, refreshToken, expiresIn, user}
+    AS-->>AC: {accessToken, user} + refreshToken
+    AC->>AC: Set HTTP-only cookie (refresh_token)
+    AC-->>C: 200 OK {accessToken, expiresIn, user} + Set-Cookie header
 ```
 
 ## 4. Logout Flow
@@ -134,7 +137,7 @@ sequenceDiagram
     participant AS as AuthService
     participant DB as Database
 
-    C->>AC: POST /auth/logout (Authorization: Bearer <accessToken>)
+    C->>AC: POST /auth/logout (Authorization: Bearer <accessToken>, Cookie: refresh_token=xxx)
     AC->>JG: Validate access token
     JG->>JG: Verify JWT signature
 
@@ -144,17 +147,19 @@ sequenceDiagram
 
     JG->>JG: Extract user from payload
     JG-->>AC: Request with user context
-    AC->>AS: logout(userId, refreshToken?)
+    AC->>AC: Extract refresh token from cookie
+    AC->>AS: logout(userId, refreshToken)
 
-    alt refreshToken provided
+    alt refreshToken in cookie
         AS->>AS: Hash refresh token
         AS->>DB: Delete session by token_hash AND user_id
-    else no refreshToken
+    else no cookie
         AS->>DB: Delete all sessions for user_id
     end
 
     AS-->>AC: void
-    AC-->>C: 200 OK {message: "Logged out successfully"}
+    AC->>AC: Clear refresh_token cookie (Max-Age=0)
+    AC-->>C: 200 OK {message: "Logged out successfully"} + Set-Cookie (clear)
 ```
 
 ## 5. Get Current User Flow
@@ -222,3 +227,9 @@ sequenceDiagram
 3. **Token Expiry**: Access 15min, Refresh 7 days
 4. **Session Tracking**: IP address and user agent stored for audit
 5. **Token Rotation**: Refresh token rotated on each use (old session deleted)
+6. **HTTP-only Cookie**: Refresh token stored in HTTP-only cookie (not accessible via JavaScript)
+7. **Cookie Security Flags**:
+   - `HttpOnly`: Prevents XSS from accessing the token
+   - `Secure`: Only sent over HTTPS (in production)
+   - `SameSite=Strict`: Prevents CSRF attacks
+   - `Path=/auth`: Cookie only sent to auth endpoints

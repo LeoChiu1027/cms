@@ -8,6 +8,9 @@ import { Migrator } from '@mikro-orm/migrations';
 import configuration from './config/configuration';
 import { validationSchema } from './config/env.validation';
 import { HealthController } from './health/health.controller';
+import { AuthModule } from './auth/auth.module';
+import { User } from './auth/entities/user.entity';
+import { Session } from './auth/entities/session.entity';
 
 @Module({
   imports: [
@@ -32,9 +35,13 @@ import { HealthController } from './health/health.controller';
         dbName: config.get<string>('database.name'),
         user: config.get<string>('database.user'),
         password: config.get<string>('database.password'),
-        entities: [],
-        discovery: { warnWhenNoEntities: false },
+        entities: [User, Session],
         debug: config.get<string>('nodeEnv') === 'development',
+        allowGlobalContext: true,
+        schemaGenerator: {
+          disableForeignKeys: false,
+          createForeignKeyConstraints: true,
+        },
         extensions: [Migrator],
         migrations: {
           path: 'dist/migrations',
@@ -43,6 +50,7 @@ import { HealthController } from './health/health.controller';
       }),
     }),
     TerminusModule,
+    AuthModule,
   ],
   controllers: [HealthController],
   providers: [],

@@ -22,7 +22,9 @@
     "docker:dev:down": "docker compose down",
     "docker:test": "docker compose -f docker-compose.test.yml up -d --wait",
     "docker:test:down": "docker compose -f docker-compose.test.yml down -v --remove-orphans",
-    "docker:test:clean": "docker compose -f docker-compose.test.yml down -v --remove-orphans && docker compose -f docker-compose.test.yml up -d --force-recreate --wait"
+    "docker:test:clean": "docker compose -f docker-compose.test.yml down -v --remove-orphans && docker compose -f docker-compose.test.yml up -d --force-recreate --wait",
+    "docs:build": "npx @redocly/cli build-docs docs/api/openapi.yaml -o docs/api/index.html",
+    "docs:preview": "npx redoc-cli serve docs/api/openapi.yaml -w"
   },
   "dependencies": {
     "@mikro-orm/core": "^6.6.2",
@@ -36,8 +38,10 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/terminus": "^11.0.0",
+    "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
+    "cookie-parser": "^1.4.7",
     "ioredis": "^5.8.2",
     "joi": "^18.0.2",
     "passport": "^0.7.0",
@@ -53,6 +57,7 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
+    "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
@@ -90,5 +95,8 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": "[\"bcrypt\"]"
   }
 }
