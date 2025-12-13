@@ -6,12 +6,15 @@ import {
   Unique,
   Collection,
   OneToMany,
+  OptionalProps,
 } from '@mikro-orm/core';
 import { randomUUID } from 'crypto';
 import { Session } from './session.entity';
+import type { UserRole } from '../../rbac/entities/user-role.entity';
 
 @Entity({ tableName: 'users' })
 export class User {
+  [OptionalProps]?: 'id' | 'isActive' | 'createdAt' | 'updatedAt' | 'sessions' | 'userRoles';
   @PrimaryKey({ type: 'uuid' })
   id: string = randomUUID();
 
@@ -53,4 +56,7 @@ export class User {
 
   @OneToMany(() => Session, (session) => session.user)
   sessions = new Collection<Session>(this);
+
+  @OneToMany('UserRole', 'user')
+  userRoles = new Collection<UserRole>(this);
 }

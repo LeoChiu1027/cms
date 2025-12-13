@@ -5,12 +5,14 @@ import {
   Index,
   Unique,
   ManyToOne,
+  OptionalProps,
 } from '@mikro-orm/core';
 import { randomUUID } from 'crypto';
 import { User } from './user.entity';
 
 @Entity({ tableName: 'sessions' })
 export class Session {
+  [OptionalProps]?: 'id' | 'createdAt';
   @PrimaryKey({ type: 'uuid' })
   id: string = randomUUID();
 

@@ -1,0 +1,829 @@
+# RBAC API Endpoints
+# OpenAPI 3.0 Path Definitions
+
+# ===========================================
+# ROLES
+# ===========================================
+
+/roles:
+  get:
+    tags:
+      - Roles
+    summary: List all roles
+    description: Get a paginated list of all roles
+    operationId: listRoles
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - name: isSystem
+        in: query
+        description: Filter by system roles
+        schema:
+          type: boolean
+    responses:
+      '200':
+        description: List of roles
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleListResponse'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+
+  post:
+    tags:
+      - Roles
+    summary: Create a new role
+    description: Create a custom role (requires roles:create permission)
+    operationId: createRole
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateRoleRequest'
+    responses:
+      '201':
+        description: Role created successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Role'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '409':
+        description: Role with this name or slug already exists
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+
+/roles/{roleId}:
+  get:
+    tags:
+      - Roles
+    summary: Get role by ID
+    description: Get a single role with its permissions
+    operationId: getRole
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/RoleIdParam'
+    responses:
+      '200':
+        description: Role details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleWithPermissions'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  patch:
+    tags:
+      - Roles
+    summary: Update a role
+    description: Update role details (requires roles:update permission). Cannot modify system roles.
+    operationId: updateRole
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/RoleIdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateRoleRequest'
+    responses:
+      '200':
+        description: Role updated successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Role'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  delete:
+    tags:
+      - Roles
+    summary: Delete a role
+    description: Delete a custom role (requires roles:delete permission). Cannot delete system roles.
+    operationId: deleteRole
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/RoleIdParam'
+    responses:
+      '204':
+        description: Role deleted successfully
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        description: Forbidden - cannot delete system roles or insufficient permissions
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+# ===========================================
+# ROLE PERMISSIONS
+# ===========================================
+
+/roles/{roleId}/permissions:
+  get:
+    tags:
+      - Roles
+    summary: Get role permissions
+    description: List all permissions assigned to a role
+    operationId: getRolePermissions
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/RoleIdParam'
+    responses:
+      '200':
+        description: List of permissions for the role
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Permission'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  post:
+    tags:
+      - Roles
+    summary: Assign permissions to role
+    description: Add one or more permissions to a role (requires roles:update permission)
+    operationId: assignPermissionsToRole
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/RoleIdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AssignPermissionsRequest'
+    responses:
+      '200':
+        description: Permissions assigned successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleWithPermissions'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  delete:
+    tags:
+      - Roles
+    summary: Remove permissions from role
+    description: Remove one or more permissions from a role (requires roles:update permission)
+    operationId: removePermissionsFromRole
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/RoleIdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RemovePermissionsRequest'
+    responses:
+      '200':
+        description: Permissions removed successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleWithPermissions'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+# ===========================================
+# PERMISSIONS
+# ===========================================
+
+/permissions:
+  get:
+    tags:
+      - Permissions
+    summary: List all permissions
+    description: Get a paginated list of all permissions
+    operationId: listPermissions
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - name: resource
+        in: query
+        description: Filter by resource type
+        schema:
+          type: string
+          example: content
+      - name: action
+        in: query
+        description: Filter by action
+        schema:
+          type: string
+          example: create
+    responses:
+      '200':
+        description: List of permissions
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionListResponse'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+
+  post:
+    tags:
+      - Permissions
+    summary: Create a new permission
+    description: Create a new permission (requires permissions:create permission)
+    operationId: createPermission
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreatePermissionRequest'
+    responses:
+      '201':
+        description: Permission created successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Permission'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '409':
+        description: Permission with this slug already exists
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+
+/permissions/{permissionId}:
+  get:
+    tags:
+      - Permissions
+    summary: Get permission by ID
+    description: Get a single permission by ID
+    operationId: getPermission
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/PermissionIdParam'
+    responses:
+      '200':
+        description: Permission details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Permission'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  delete:
+    tags:
+      - Permissions
+    summary: Delete a permission
+    description: Delete a permission (requires permissions:delete permission)
+    operationId: deletePermission
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/PermissionIdParam'
+    responses:
+      '204':
+        description: Permission deleted successfully
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+# ===========================================
+# USER ROLES
+# ===========================================
+
+/users/{userId}/roles:
+  get:
+    tags:
+      - User Roles
+    summary: Get user roles
+    description: List all roles assigned to a user
+    operationId: getUserRoles
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/UserIdParam'
+    responses:
+      '200':
+        description: List of roles for the user
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Role'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  post:
+    tags:
+      - User Roles
+    summary: Assign roles to user
+    description: Assign one or more roles to a user (requires users:manage-roles permission)
+    operationId: assignRolesToUser
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/UserIdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AssignRolesRequest'
+    responses:
+      '200':
+        description: Roles assigned successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Role'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  delete:
+    tags:
+      - User Roles
+    summary: Remove roles from user
+    description: Remove one or more roles from a user (requires users:manage-roles permission)
+    operationId: removeRolesFromUser
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/UserIdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RemoveRolesRequest'
+    responses:
+      '200':
+        description: Roles removed successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Role'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+/users/{userId}/permissions:
+  get:
+    tags:
+      - User Roles
+    summary: Get user effective permissions
+    description: Get all permissions for a user (aggregated from all their roles)
+    operationId: getUserPermissions
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/UserIdParam'
+    responses:
+      '200':
+        description: List of effective permissions for the user
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Permission'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+# ===========================================
+# COMPONENTS
+# ===========================================
+
+components:
+  parameters:
+    RoleIdParam:
+      name: roleId
+      in: path
+      required: true
+      description: Role UUID
+      schema:
+        type: string
+        format: uuid
+
+    PermissionIdParam:
+      name: permissionId
+      in: path
+      required: true
+      description: Permission UUID
+      schema:
+        type: string
+        format: uuid
+
+    UserIdParam:
+      name: userId
+      in: path
+      required: true
+      description: User UUID
+      schema:
+        type: string
+        format: uuid
+
+    PageParam:
+      name: page
+      in: query
+      description: Page number (1-indexed)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    LimitParam:
+      name: limit
+      in: query
+      description: Items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+
+  schemas:
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          example: Content Editor
+        slug:
+          type: string
+          example: content-editor
+        description:
+          type: string
+          nullable: true
+          example: Can create and edit content
+        isSystem:
+          type: boolean
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RoleWithPermissions:
+      allOf:
+        - $ref: '#/components/schemas/Role'
+        - type: object
+          properties:
+            permissions:
+              type: array
+              items:
+                $ref: '#/components/schemas/Permission'
+
+    Permission:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440001
+        name:
+          type: string
+          example: Create Content
+        slug:
+          type: string
+          example: content:create
+        resource:
+          type: string
+          example: content
+        action:
+          type: string
+          example: create
+        description:
+          type: string
+          nullable: true
+          example: Ability to create new content
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateRoleRequest:
+      type: object
+      required:
+        - name
+        - slug
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Content Editor
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-z0-9-]+$'
+          example: content-editor
+        description:
+          type: string
+          nullable: true
+          example: Can create and edit content
+
+    UpdateRoleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Content Editor
+        description:
+          type: string
+          nullable: true
+          example: Can create and edit content
+
+    CreatePermissionRequest:
+      type: object
+      required:
+        - name
+        - slug
+        - resource
+        - action
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Create Content
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-z0-9:-]+$'
+          example: content:create
+        resource:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: content
+        action:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: create
+        description:
+          type: string
+          nullable: true
+          example: Ability to create new content
+
+    AssignPermissionsRequest:
+      type: object
+      required:
+        - permissionIds
+      properties:
+        permissionIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          example:
+            - 550e8400-e29b-41d4-a716-446655440001
+            - 550e8400-e29b-41d4-a716-446655440002
+
+    RemovePermissionsRequest:
+      type: object
+      required:
+        - permissionIds
+      properties:
+        permissionIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          example:
+            - 550e8400-e29b-41d4-a716-446655440001
+
+    AssignRolesRequest:
+      type: object
+      required:
+        - roleIds
+      properties:
+        roleIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          example:
+            - 550e8400-e29b-41d4-a716-446655440000
+
+    RemoveRolesRequest:
+      type: object
+      required:
+        - roleIds
+      properties:
+        roleIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          example:
+            - 550e8400-e29b-41d4-a716-446655440000
+
+    RoleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    PermissionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 50
+        totalPages:
+          type: integer
+          example: 3
+
+    Error:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          example: 403
+        message:
+          type: string
+          example: Insufficient permissions
+        error:
+          type: string
+          example: Forbidden
+
+    ValidationError:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        message:
+          type: array
+          items:
+            type: string
+          example:
+            - name must be a string
+            - slug must match pattern ^[a-z0-9-]+$
+        error:
+          type: string
+          example: Bad Request

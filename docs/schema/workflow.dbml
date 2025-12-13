@@ -1,13 +1,20 @@
 // ===========================================
-// WORKFLOW & APPROVAL TABLES
-// Dependencies: auth.dbml (users), content.dbml (contents)
+// WORKFLOW & APPROVAL TABLES (Polymorphic)
+// Dependencies: auth.dbml (users)
 // ===========================================
 
 // -------------------------------------------
 // Enums
 // -------------------------------------------
 
-Enum content_status {
+Enum entity_type {
+  content
+  role
+  permission
+  user_role      // user-role assignment
+}
+
+Enum workflow_status {
   draft
   pending_review
   in_review
@@ -17,6 +24,12 @@ Enum content_status {
   scheduled
   published
   archived
+}
+
+Enum workflow_operation {
+  create
+  update
+  delete
 }
 
 Enum approval_action {
@@ -35,38 +48,53 @@ Table users {
   Note: 'Reference only - defined in auth.dbml'
 }
 
-Table contents {
-  id uuid [pk]
-  Note: 'Reference only - defined in content.dbml'
-}
-
 // -------------------------------------------
 // Workflow Tables
 // -------------------------------------------
 
 Table workflows {
   id uuid [pk, default: `gen_random_uuid()`]
-  content_id uuid [ref: > contents.id, not null]
-  current_status content_status [not null]
-  previous_status content_status
+
+  // Polymorphic reference to any entity
+  entity_type entity_type [not null]
+  entity_id uuid                              // null for CREATE operations
+  operation workflow_operation [not null]
+
+  // Proposed changes stored as JSON
+  payload jsonb [not null]                    // The data to apply when approved
+
+  // Workflow state
+  current_status workflow_status [not null, default: 'draft']
+  previous_status workflow_status
+
+  // Assignment and scheduling
   assigned_to uuid [ref: > users.id]
   priority int [default: 0]
   due_date timestamp
-  started_at timestamp
-  completed_at timestamp
+
+  // Timestamps
+  submitted_at timestamp                      // When moved to pending_review
+  started_at timestamp                        // When review started
+  completed_at timestamp                      // When approved/rejected
   created_at timestamp [default: `now()`, not null]
   updated_at timestamp [default: `now()`, not null]
 
+  // Requester
+  created_by uuid [ref: > users.id, not null]
+
   indexes {
-    content_id [name: 'idx_workflows_content']
+    (entity_type, entity_id) [name: 'idx_workflows_entity']
+    entity_type [name: 'idx_workflows_entity_type']
     current_status [name: 'idx_workflows_status']
     assigned_to [name: 'idx_workflows_assigned']
     (current_status, assigned_to) [name: 'idx_workflows_status_assigned']
+    (entity_type, current_status) [name: 'idx_workflows_type_status']
     due_date [name: 'idx_workflows_due_date']
     (current_status, priority) [name: 'idx_workflows_status_priority']
+    created_by [name: 'idx_workflows_created_by']
   }
 
-  Note: 'Tracks current workflow state for content items'
+  Note: 'Polymorphic workflow supporting any entity type (content, role, permission, etc.)'
 }
 
 Table approvals {
@@ -75,8 +103,8 @@ Table approvals {
   reviewer_id uuid [ref: > users.id, not null]
   action approval_action [not null]
   comment text
-  from_status content_status [not null]
-  to_status content_status [not null]
+  from_status workflow_status [not null]
+  to_status workflow_status [not null]
   created_at timestamp [default: `now()`, not null]
 
   indexes {
@@ -93,17 +121,39 @@ Table workflow_assignments {
   id uuid [pk, default: `gen_random_uuid()`]
   workflow_id uuid [ref: > workflows.id, not null]
   user_id uuid [ref: > users.id, not null]
-  role varchar(50) [not null]
+  role varchar(50) [not null]                 // 'reviewer', 'approver', 'observer'
   assigned_by uuid [ref: > users.id]
   assigned_at timestamp [default: `now()`, not null]
   completed_at timestamp
 
   indexes {
-    (workflow_id, user_id) [name: 'idx_workflow_assignments_unique']
+    (workflow_id, user_id) [unique, name: 'idx_workflow_assignments_unique']
     workflow_id [name: 'idx_workflow_assignments_workflow']
     user_id [name: 'idx_workflow_assignments_user']
     (user_id, completed_at) [name: 'idx_workflow_assignments_pending']
   }
 
-  Note: 'Track who is assigned to review/approve content'
+  Note: 'Track who is assigned to review/approve workflows'
+}
+
+// -------------------------------------------
+// Workflow Configuration (Optional)
+// -------------------------------------------
+
+Table workflow_configs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  entity_type entity_type [unique, not null]
+  requires_approval boolean [default: true, not null]
+  auto_approve_for_roles jsonb               // Role slugs that bypass approval
+  min_approvers int [default: 1]
+  notify_on_submit boolean [default: true]
+  notify_on_complete boolean [default: true]
+  created_at timestamp [default: `now()`, not null]
+  updated_at timestamp [default: `now()`, not null]
+
+  indexes {
+    entity_type [unique, name: 'idx_workflow_configs_entity_type']
+  }
+
+  Note: 'Per-entity-type workflow configuration'
 }
