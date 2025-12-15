@@ -111,6 +111,7 @@ flowchart TB
             ApprovalSvc["ApprovalService"]
             WorkflowEntity["Workflow Entity"]
             ApprovalEntity["Approval Entity"]
+            WorkflowConfigEntity["WorkflowConfig Entity"]
         end
 
         subgraph MediaMod["MediaModule"]
@@ -173,7 +174,104 @@ flowchart LR
     Viewer --> Read
 ```
 
-## Content Approval Workflow
+## Polymorphic Workflow System
+
+The workflow system supports approval processes for multiple entity types using a polymorphic design pattern. Currently active for content; other entity types are designed for future use.
+
+### Supported Entity Types
+
+| Entity Type | Description | Status |
+|-------------|-------------|--------|
+| `content` | Blog posts, products, pages | **Active** |
+| `role` | RBAC roles | Future |
+| `permission` | RBAC permissions | Future |
+| `user_role` | User-role assignments | Future |
+
+### Workflow Architecture
+
+```mermaid
+flowchart TB
+    subgraph Entities["Entity Types"]
+        Content["Content<br/>(blogs, products)"]
+        Role["Role"]
+        Permission["Permission"]
+        UserRole["User-Role<br/>Assignment"]
+    end
+
+    subgraph WorkflowEngine["Workflow Engine"]
+        WS["WorkflowService"]
+        WC["WorkflowConfig"]
+
+        subgraph Actions["Actions"]
+            Submit["Submit"]
+            Claim["Claim"]
+            Approve["Approve"]
+            Reject["Reject"]
+            RequestChanges["Request Changes"]
+        end
+    end
+
+    subgraph Storage["Workflow Storage"]
+        Workflows["workflows table<br/>(entity_type, entity_id,<br/>operation, payload)"]
+        Approvals["approvals table<br/>(action, comment)"]
+        Configs["workflow_configs table<br/>(per entity type)"]
+    end
+
+    Content --> WS
+    Role --> WS
+    Permission --> WS
+    UserRole --> WS
+
+    WS --> WC
+    WC --> Configs
+    WS --> Workflows
+    Actions --> Approvals
+```
+
+### Workflow Entity Schema
+
+```mermaid
+erDiagram
+    WORKFLOW {
+        uuid id PK
+        string entity_type "content|role|permission|user_role"
+        uuid entity_id "null for create ops"
+        string operation "create|update|delete"
+        jsonb payload "proposed changes"
+        string current_status
+        string previous_status
+        uuid assigned_to FK
+        uuid created_by FK
+        timestamp submitted_at
+        timestamp completed_at
+    }
+
+    APPROVAL {
+        uuid id PK
+        uuid workflow_id FK
+        uuid reviewer_id FK
+        string action "approve|reject|request_changes|comment"
+        text comment
+        string from_status
+        string to_status
+        timestamp created_at
+    }
+
+    WORKFLOW_CONFIG {
+        uuid id PK
+        string entity_type UK
+        boolean requires_approval
+        jsonb auto_approve_for_roles
+        int min_approvers
+        boolean notify_on_submit
+        boolean notify_on_complete
+    }
+
+    WORKFLOW ||--o{ APPROVAL : "has"
+    WORKFLOW_CONFIG ||--o{ WORKFLOW : "configures"
+```
+
+## Workflow State Machine
 
 ```mermaid
 stateDiagram-v2
@@ -182,18 +280,36 @@ stateDiagram-v2
     Draft --> PendingReview: Submit for Review
     Draft --> Draft: Save Draft
 
-    PendingReview --> InReview: Reviewer Picks Up
+    PendingReview --> InReview: Reviewer Claims
+    PendingReview --> Approved: Direct Approve
     PendingReview --> Draft: Author Recalls
 
     InReview --> Approved: Approve
     InReview --> Rejected: Reject
     InReview --> ChangesRequested: Request Changes
 
-    ChangesRequested --> Draft: Author Revises
+    ChangesRequested --> PendingReview: Resubmit
+    ChangesRequested --> Draft: Save Draft
 
     Rejected --> Draft: Author Revises
-    Rejected --> Archived: Discard
+    Rejected --> [*]: Discard
 
+    Approved --> [*]: Apply Changes
+
+    note right of Approved
+        On approval:
+        - CREATE: Insert new entity
+        - UPDATE: Apply changes
+        - DELETE: Remove entity
+    end note
+```
+
+### Content-Specific Extended States
+
+For content entities, additional states are available after approval:
+
+```mermaid
+stateDiagram-v2
     Approved --> Scheduled: Schedule Publish
     Approved --> Published: Publish Now
 
@@ -205,6 +321,105 @@ stateDiagram-v2
     Archived --> Draft: Restore
     Archived --> [*]: Delete Permanently
 ```
+
+## Request Flow: Create Role (RBAC)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant RC as RolesController
+    participant PG as PermissionsGuard
+    participant RS as RolesService
+    participant DB as PostgreSQL
+    participant Cache as Redis
+
+    U->>RC: POST /roles {name, slug, description}
+    RC->>PG: Check permission (roles:create)
+    PG->>Cache: Get user permissions
+    Cache-->>PG: Permissions
+    PG-->>RC: Authorized
+
+    RC->>RC: Validate DTO
+    RC->>RS: createRole(dto)
+    RS->>DB: Check if name/slug exists
+
+    alt Already exists
+        RS-->>RC: ConflictException
+        RC-->>U: 409 Conflict
+    end
+
+    RS->>DB: INSERT INTO roles
+    RS-->>RC: Role
+    RC-->>U: 201 Created {role}
+```
+
+> **Future Enhancement**: The workflow system is designed to support RBAC approval flows. See `docs/schema/workflow.dbml` for the polymorphic workflow schema that can be enabled for roles, permissions, and user-role assignments.
+
+## Request Flow: Content with RBAC & Approval
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant GW as API Gateway
+    participant Auth as Auth Service
+    participant RBAC as RBAC Service
+    participant CS as Content Service
+    participant WF as Workflow Service
+    participant DB as PostgreSQL
+    participant Cache as Redis
+
+    U->>GW: POST /api/content (Create Blog)
+    GW->>Auth: Validate Token
+    Auth->>Cache: Check Session
+    Cache-->>Auth: Session Valid
+    Auth-->>GW: User Authenticated
+
+    GW->>RBAC: Check Permission (content:create)
+    RBAC->>Cache: Get User Roles/Permissions
+    Cache-->>RBAC: Cached Permissions
+    RBAC-->>GW: Permission Granted
+
+    GW->>CS: Create Content
+    CS->>WF: checkApprovalRequired('content', userId)
+    WF-->>CS: {requiresApproval: true/false}
+
+    alt Approval Required
+        CS->>WF: createWorkflow('content', 'create', payload)
+        WF->>DB: Insert Workflow
+        WF-->>CS: Workflow
+        CS-->>GW: 202 Accepted {workflow}
+    else Direct Creation
+        CS->>DB: Insert Content (status: draft)
+        CS-->>GW: 201 Created {content}
+    end
+
+    GW-->>U: Response
+```
+
+## Workflow Configuration
+
+Each entity type can be configured independently:
+
+```json
+{
+  "entityType": "role",
+  "requiresApproval": true,
+  "autoApproveForRoles": ["super-admin", "admin"],
+  "minApprovers": 1,
+  "notifyOnSubmit": true,
+  "notifyOnComplete": true
+}
+```
+
+### Configuration Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `requiresApproval` | boolean | Whether this entity type requires approval workflow |
+| `autoApproveForRoles` | string[] | Role slugs that bypass the approval process |
+| `minApprovers` | number | Minimum number of approvals required |
+| `notifyOnSubmit` | boolean | Send notifications when workflow submitted |
+| `notifyOnComplete` | boolean | Send notifications when workflow completed |
 
 ## Content Types & Polymorphic Structure
 
@@ -250,49 +465,43 @@ erDiagram
     CONTENT ||--o{ CONTENT_VERSION : "versions"
 ```
 
-## Request Flow with RBAC & Approval
+## Module Dependencies
 
 ```mermaid
-sequenceDiagram
-    participant U as User
-    participant GW as API Gateway
-    participant Auth as Auth Service
-    participant RBAC as RBAC Service
-    participant CS as Content Service
-    participant WF as Workflow Service
-    participant DB as PostgreSQL
-    participant Cache as Redis
+flowchart TD
+    subgraph Core["Core (Global)"]
+        CoreModule
+    end
 
-    U->>GW: POST /api/content (Create Blog)
-    GW->>Auth: Validate Token
-    Auth->>Cache: Check Session
-    Cache-->>Auth: Session Valid
-    Auth-->>GW: User Authenticated
+    subgraph Shared["Shared (Global)"]
+        SharedModule
+    end
 
-    GW->>RBAC: Check Permission (content:create)
-    RBAC->>Cache: Get User Roles/Permissions
-    Cache-->>RBAC: Cached Permissions
-    RBAC-->>GW: Permission Granted
+    subgraph Features["Feature Modules"]
+        AuthModule
+        RBACModule
+        WorkflowModule
+        ContentModule
+        MediaModule
+    end
 
-    GW->>CS: Create Content
-    CS->>DB: Insert Content (status: draft)
-    CS->>WF: Initialize Workflow
-    WF->>DB: Create Workflow Instance
-    DB-->>CS: Content Created
-    CS-->>GW: Response
-    GW-->>U: 201 Created
+    CoreModule --> SharedModule
 
-    Note over U,DB: Later: Submit for Approval
+    AuthModule --> CoreModule
 
-    U->>GW: POST /api/content/{id}/submit
-    GW->>Auth: Validate Token
-    GW->>RBAC: Check Permission
-    GW->>WF: Transition State
-    WF->>DB: Update Status to pending_review
-    WF->>WF: Notify Reviewers
-    WF-->>GW: State Updated
-    GW-->>U: 200 OK
+    RBACModule --> CoreModule
+
+    WorkflowModule --> CoreModule
+
+    ContentModule --> CoreModule
+    ContentModule --> WorkflowModule
+
+    MediaModule --> CoreModule
+
+    style WorkflowModule fill:#f9f,stroke:#333
 ```
+
+> **Note**: RBAC currently operates without workflow integration. The polymorphic workflow system is designed to support RBAC approval flows in the future (dashed line represents future integration).
 
 ## Deployment Architecture
 

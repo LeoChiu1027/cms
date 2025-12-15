@@ -1,12 +1,21 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
-  "setupFiles": ["./setup.ts"],
-  "setupFilesAfterEnv": ["./matchers/db.matcher.ts"],
-  "testTimeout": 30000
+  "setupFiles": [
+    "./setup.ts"
+  ],
+  "setupFilesAfterEnv": [
+    "./matchers/db.matcher.ts"
+  ],
+  "testTimeout": 30000,
+  "maxWorkers": 1
 }

@@ -30,8 +30,8 @@ describe('AuthController (e2e)', () => {
 
     // Get ORM and create schema
     orm = moduleFixture.get<MikroORM>(MikroORM);
-    em = orm.em.fork();
-    await orm.schema.refreshDatabase();
+    await orm.schema.dropSchema();
+    await orm.schema.createSchema();
 
     await app.init();
   });

@@ -15,6 +15,16 @@ tags:
     description: Health check endpoints
   - name: Authentication
     description: User authentication and session management
+  - name: Roles
+    description: Role management (CRUD operations)
+  - name: Permissions
+    description: Permission management
+  - name: User Roles
+    description: User-role assignments and effective permissions
+  - name: Workflows
+    description: Approval workflow management (currently for content; RBAC workflows planned for future)
+  - name: Workflow Config
+    description: Workflow configuration per entity type
 
 paths:
   /health:
