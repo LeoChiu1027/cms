@@ -1,13 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { MikroORM } from '@mikro-orm/core';
+import { EntityManager, MikroORM } from '@mikro-orm/core';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module';
+import { Role } from '../src/rbac/entities/role.entity';
+import { Permission } from '../src/rbac/entities/permission.entity';
+import { RolePermission } from '../src/rbac/entities/role-permission.entity';
+import { UserRole } from '../src/rbac/entities/user-role.entity';
+import './matchers/db.matcher';
 
 describe('RBAC (e2e)', () => {
   let app: INestApplication;
   let orm: MikroORM;
+  let em: EntityManager;
   let adminAccessToken: string;
   let userAccessToken: string;
   let adminUserId: string;
@@ -29,6 +35,7 @@ describe('RBAC (e2e)', () => {
     app.use(cookieParser());
 
     orm = moduleFixture.get<MikroORM>(MikroORM);
+    em = orm.em.fork();
     await orm.schema.dropSchema();
     await orm.schema.createSchema();
 
@@ -95,6 +102,14 @@ describe('RBAC (e2e)', () => {
         });
 
         createdRoleId = response.body.id;
+
+        // Database validation: verify role was created correctly
+        await expect({ entity: Role, id: createdRoleId }).toMatchInDb(em, {
+          name: 'Content Editor',
+          slug: 'content-editor',
+          description: 'Can create and edit content',
+          isSystem: false,
+        });
       });
 
       it('should return 400 with invalid slug format', async () => {
@@ -247,6 +262,12 @@ describe('RBAC (e2e)', () => {
           name: 'Updated Content Editor',
           description: 'Updated description',
         });
+
+        // Database validation: verify role was updated correctly
+        await expect({ entity: Role, id: createdRoleId }).toMatchInDb(em, {
+          name: 'Updated Content Editor',
+          description: 'Updated description',
+        });
       });
 
       it('should return 404 for non-existent role', async () => {
@@ -280,16 +301,16 @@ describe('RBAC (e2e)', () => {
       });
 
       it('should return 204 and delete role', async () => {
+        // Verify role exists before deletion
+        await expect({ entity: Role, id: roleToDeleteId }).toExistInDb(em);
+
         await request(app.getHttpServer())
           .delete(`/roles/${roleToDeleteId}`)
           .set('Authorization', `Bearer ${adminAccessToken}`)
           .expect(204);
 
-        // Verify deleted
-        await request(app.getHttpServer())
-          .get(`/roles/${roleToDeleteId}`)
-          .set('Authorization', `Bearer ${adminAccessToken}`)
-          .expect(404);
+        // Database validation: verify role was deleted
+        await expect({ entity: Role, id: roleToDeleteId }).toNotExistInDb(em);
       });
 
       it('should return 404 for non-existent role', async () => {
@@ -339,6 +360,18 @@ describe('RBAC (e2e)', () => {
         });
 
         createdPermissionId = response.body.id;
+
+        // Database validation: verify permission was created correctly
+        await expect({ entity: Permission, id: createdPermissionId }).toMatchInDb(
+          em,
+          {
+            name: 'Create Content',
+            slug: 'content:create',
+            resource: 'content',
+            action: 'create',
+            description: 'Ability to create new content',
+          },
+        );
       });
 
       it('should return 400 when required fields are missing', async () => {
@@ -476,16 +509,21 @@ describe('RBAC (e2e)', () => {
       });
 
       it('should return 204 and delete permission', async () => {
+        // Verify permission exists before deletion
+        await expect({ entity: Permission, id: permissionToDeleteId }).toExistInDb(
+          em,
+        );
+
         await request(app.getHttpServer())
           .delete(`/permissions/${permissionToDeleteId}`)
           .set('Authorization', `Bearer ${adminAccessToken}`)
           .expect(204);
 
-        // Verify deleted
-        await request(app.getHttpServer())
-          .get(`/permissions/${permissionToDeleteId}`)
-          .set('Authorization', `Bearer ${adminAccessToken}`)
-          .expect(404);
+        // Database validation: verify permission was deleted
+        await expect({
+          entity: Permission,
+          id: permissionToDeleteId,
+        }).toNotExistInDb(em);
       });
 
       it('should return 404 for non-existent permission', async () => {
@@ -558,6 +596,16 @@ describe('RBAC (e2e)', () => {
             expect.objectContaining({ id: testPermissionId2 }),
           ]),
         });
+
+        // Database validation: verify role-permission mappings were created
+        await expect({
+          entity: RolePermission,
+          where: { role: { id: testRoleId }, permission: { id: testPermissionId1 } },
+        }).toExistInDb(em);
+        await expect({
+          entity: RolePermission,
+          where: { role: { id: testRoleId }, permission: { id: testPermissionId2 } },
+        }).toExistInDb(em);
       });
 
       it('should return 400 with invalid permission IDs', async () => {
@@ -606,6 +654,12 @@ describe('RBAC (e2e)', () => {
 
     describe('DELETE /roles/:roleId/permissions', () => {
       it('should return 200 and remove permissions from role', async () => {
+        // Verify role-permission mapping exists before removal
+        await expect({
+          entity: RolePermission,
+          where: { role: { id: testRoleId }, permission: { id: testPermissionId1 } },
+        }).toExistInDb(em);
+
         const response = await request(app.getHttpServer())
           .delete(`/roles/${testRoleId}/permissions`)
           .set('Authorization', `Bearer ${adminAccessToken}`)
@@ -620,6 +674,17 @@ describe('RBAC (e2e)', () => {
         expect(response.body.permissions).toContainEqual(
           expect.objectContaining({ id: testPermissionId2 }),
         );
+
+        // Database validation: verify role-permission mapping was removed
+        await expect({
+          entity: RolePermission,
+          where: { role: { id: testRoleId }, permission: { id: testPermissionId1 } },
+        }).toNotExistInDb(em);
+        // Verify testPermissionId2 still exists
+        await expect({
+          entity: RolePermission,
+          where: { role: { id: testRoleId }, permission: { id: testPermissionId2 } },
+        }).toExistInDb(em);
       });
     });
   });
@@ -658,6 +723,12 @@ describe('RBAC (e2e)', () => {
             expect.objectContaining({ id: testRoleId }),
           ]),
         });
+
+        // Database validation: verify user-role mapping was created
+        await expect({
+          entity: UserRole,
+          where: { user: { id: regularUserId }, role: { id: testRoleId } },
+        }).toExistInDb(em);
       });
 
       it('should return 400 with invalid role IDs', async () => {
@@ -725,6 +796,12 @@ describe('RBAC (e2e)', () => {
 
     describe('DELETE /users/:userId/roles', () => {
       it('should return 200 and remove roles from user', async () => {
+        // Verify user-role mapping exists before removal
+        await expect({
+          entity: UserRole,
+          where: { user: { id: regularUserId }, role: { id: testRoleId } },
+        }).toExistInDb(em);
+
         const response = await request(app.getHttpServer())
           .delete(`/users/${regularUserId}/roles`)
           .set('Authorization', `Bearer ${adminAccessToken}`)
@@ -736,6 +813,12 @@ describe('RBAC (e2e)', () => {
         expect(response.body.data).not.toContainEqual(
           expect.objectContaining({ id: testRoleId }),
         );
+
+        // Database validation: verify user-role mapping was removed
+        await expect({
+          entity: UserRole,
+          where: { user: { id: regularUserId }, role: { id: testRoleId } },
+        }).toNotExistInDb(em);
       });
     });
   });

@@ -1,0 +1,12 @@
+{
+  "jest.virtualFolders": [
+    {
+      "name": "unit",
+      "jestCommandLine": "npx jest"
+    },
+    {
+      "name": "e2e",
+      "jestCommandLine": "npx jest --config test/jest-e2e.json"
+    }
+  ]
+}

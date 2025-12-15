@@ -4,17 +4,18 @@
     "json",
     "ts"
   ],
-  "rootDir": ".",
+  "rootDir": "..",
+  "roots": ["<rootDir>/test"],
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "setupFiles": [
-    "./setup.ts"
+    "<rootDir>/test/setup.ts"
   ],
   "setupFilesAfterEnv": [
-    "./matchers/db.matcher.ts"
+    "<rootDir>/test/matchers/db.matcher.ts"
   ],
   "testTimeout": 30000,
   "maxWorkers": 1
