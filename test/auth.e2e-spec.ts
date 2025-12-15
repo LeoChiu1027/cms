@@ -1,13 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { MikroORM } from '@mikro-orm/core';
+import { EntityManager, MikroORM } from '@mikro-orm/core';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module';
+import { User } from '../src/auth/entities/user.entity';
+import { Session } from '../src/auth/entities/session.entity';
+import './matchers/db.matcher';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
   let orm: MikroORM;
+  let em: EntityManager;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -26,6 +30,7 @@ describe('AuthController (e2e)', () => {
 
     // Get ORM and create schema
     orm = moduleFixture.get<MikroORM>(MikroORM);
+    em = orm.em.fork();
     await orm.schema.refreshDatabase();
 
     await app.init();
@@ -68,6 +73,21 @@ describe('AuthController (e2e)', () => {
       expect(cookies).toBeDefined();
       expect(cookies[0]).toMatch(/refresh_token=/);
       expect(cookies[0]).toMatch(/HttpOnly/);
+
+      // Database validation: verify user was created correctly
+      const userId = response.body.user.id;
+      await expect({ entity: User, id: userId }).toMatchInDb(em, {
+        email: validUser.email,
+        firstName: validUser.firstName,
+        lastName: validUser.lastName,
+        isActive: true,
+      });
+
+      // Database validation: verify session was created
+      await expect({
+        entity: Session,
+        where: { user: { id: userId } },
+      }).toExistInDb(em);
     });
 
     it('should return 400 with invalid email format', async () => {
@@ -121,6 +141,13 @@ describe('AuthController (e2e)', () => {
     });
 
     it('should return 200 with valid credentials', async () => {
+      // Get session count before login
+      em.clear();
+      const userBefore = await em.findOne(User, { email: testUser.email });
+      const sessionCountBefore = await em.count(Session, {
+        user: { id: userBefore!.id },
+      });
+
       const response = await request(app.getHttpServer())
         .post('/auth/login')
         .send(testUser)
@@ -138,6 +165,18 @@ describe('AuthController (e2e)', () => {
       const cookies = response.headers['set-cookie'];
       expect(cookies).toBeDefined();
       expect(cookies[0]).toMatch(/refresh_token=/);
+
+      // Database validation: verify new session was created
+      em.clear();
+      const sessionCountAfter = await em.count(Session, {
+        user: { id: userBefore!.id },
+      });
+      expect(sessionCountAfter).toBe(sessionCountBefore + 1);
+
+      // Database validation: verify lastLoginAt was updated
+      await expect({ entity: User, id: userBefore!.id }).toMatchInDb(em, {
+        lastLoginAt: expect.any(Date),
+      });
     });
 
     it('should return 401 with wrong password', async () => {
@@ -161,6 +200,7 @@ describe('AuthController (e2e)', () => {
 
   describe('POST /auth/refresh', () => {
     let refreshTokenCookie: string;
+    let userId: string;
 
     beforeAll(async () => {
       // Create user and get refresh token
@@ -174,9 +214,15 @@ describe('AuthController (e2e)', () => {
         });
 
       refreshTokenCookie = response.headers['set-cookie'][0];
+      userId = response.body.user.id;
     });
 
     it('should return 200 with valid refresh token cookie', async () => {
+      // Get session tokenHash before refresh for comparison
+      em.clear();
+      const sessionBefore = await em.findOne(Session, { user: { id: userId } });
+      const tokenHashBefore = sessionBefore!.tokenHash;
+
       const response = await request(app.getHttpServer())
         .post('/auth/refresh')
         .set('Cookie', refreshTokenCookie)
@@ -194,6 +240,20 @@ describe('AuthController (e2e)', () => {
       const cookies = response.headers['set-cookie'];
       expect(cookies).toBeDefined();
       expect(cookies[0]).toMatch(/refresh_token=/);
+
+      // Database validation: verify session exists with rotated token
+      await expect({
+        entity: Session,
+        where: { user: { id: userId } },
+      }).toExistInDb(em);
+
+      // Verify token was rotated (different from before)
+      em.clear();
+      const sessionAfter = await em.findOne(Session, { user: { id: userId } });
+      expect(sessionAfter!.tokenHash).not.toBe(tokenHashBefore);
+
+      // Update cookie for subsequent tests
+      refreshTokenCookie = cookies[0];
     });
 
     it('should return 401 without refresh token cookie', async () => {
@@ -257,6 +317,7 @@ describe('AuthController (e2e)', () => {
   describe('POST /auth/logout', () => {
     let accessToken: string;
     let refreshTokenCookie: string;
+    let userId: string;
 
     beforeAll(async () => {
       const response = await request(app.getHttpServer())
@@ -270,9 +331,16 @@ describe('AuthController (e2e)', () => {
 
       accessToken = response.body.accessToken;
       refreshTokenCookie = response.headers['set-cookie'][0];
+      userId = response.body.user.id;
     });
 
     it('should return 200 and clear cookie when logged in', async () => {
+      // Verify session exists before logout
+      await expect({
+        entity: Session,
+        where: { user: { id: userId } },
+      }).toExistInDb(em);
+
       const response = await request(app.getHttpServer())
         .post('/auth/logout')
         .set('Authorization', `Bearer ${accessToken}`)
@@ -288,6 +356,12 @@ describe('AuthController (e2e)', () => {
       expect(cookies).toBeDefined();
       expect(cookies[0]).toMatch(/refresh_token=;/);
       expect(cookies[0]).toMatch(/Max-Age=0/i);
+
+      // Database validation: verify session was deleted
+      await expect({
+        entity: Session,
+        where: { user: { id: userId } },
+      }).toNotExistInDb(em);
     });
 
     it('should return 401 without access token', async () => {
@@ -306,12 +380,24 @@ describe('AuthController (e2e)', () => {
       const newAccessToken = loginResponse.body.accessToken;
       const newRefreshCookie = loginResponse.headers['set-cookie'][0];
 
+      // Database validation: verify session was created after login
+      await expect({
+        entity: Session,
+        where: { user: { id: userId } },
+      }).toExistInDb(em);
+
       // Logout
       await request(app.getHttpServer())
         .post('/auth/logout')
         .set('Authorization', `Bearer ${newAccessToken}`)
         .set('Cookie', newRefreshCookie)
         .expect(200);
+
+      // Database validation: verify session was deleted after logout
+      await expect({
+        entity: Session,
+        where: { user: { id: userId } },
+      }).toNotExistInDb(em);
 
       // Try to use old refresh token - should fail
       await request(app.getHttpServer())

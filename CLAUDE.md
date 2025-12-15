@@ -116,3 +116,46 @@ src/
 - Merge related assertions into comprehensive tests
 - >80% coverage target
 - Do NOT mock external dependencies in e2e tests
+
+### E2E Testing with Database Validation
+
+For POST, PUT, and DELETE endpoints, always validate that database state changes correctly—not just API responses.
+
+**Custom Matchers** (`test/matchers/db.matcher.ts`):
+- `toExistInDb(em)` - verify entity exists in database
+- `toNotExistInDb(em)` - verify entity was deleted from database
+- `toMatchInDb(em, expected)` - verify entity exists with specific field values
+
+**Usage Examples**:
+```typescript
+import './matchers/db.matcher';
+
+// Verify entity was created with correct fields (POST)
+await expect({ entity: User, id: userId }).toMatchInDb(em, {
+  email: 'test@example.com',
+  firstName: 'John',
+  isActive: true,
+});
+
+// Verify related entity was created (POST)
+await expect({
+  entity: Session,
+  where: { user: { id: userId } },
+}).toExistInDb(em);
+
+// Verify entity was deleted (DELETE or logout)
+await expect({
+  entity: Session,
+  where: { user: { id: userId } },
+}).toNotExistInDb(em);
+
+// Use Jest asymmetric matchers for flexible assertions
+await expect({ entity: User, id: userId }).toMatchInDb(em, {
+  lastLoginAt: expect.any(Date),
+});
+```
+
+**E2E Test Checklist for Mutating Endpoints**:
+1. **POST**: Verify entity created in DB with correct fields, verify related entities created
+2. **PUT/PATCH**: Verify entity updated in DB, verify `updatedAt` changed
+3. **DELETE**: Verify entity removed from DB (or soft-deleted with `deletedAt`)

@@ -7,5 +7,6 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "setupFiles": ["./setup.ts"],
+  "setupFilesAfterEnv": ["./matchers/db.matcher.ts"],
   "testTimeout": 30000
 }
