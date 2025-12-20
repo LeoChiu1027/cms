@@ -1,0 +1,983 @@
+# Content API Endpoints
+# OpenAPI 3.0 Path Definitions
+
+# ===========================================
+# TAGS
+# ===========================================
+
+/tags:
+  get:
+    tags:
+      - Tags
+    summary: List all tags
+    description: Get a paginated list of all tags
+    operationId: listTags
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - name: search
+        in: query
+        description: Search tags by name
+        schema:
+          type: string
+          example: tech
+    responses:
+      '200':
+        description: List of tags
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagListResponse'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+
+  post:
+    tags:
+      - Tags
+    summary: Create a new tag
+    description: Create a new tag (requires tags:create permission)
+    operationId: createTag
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateTagRequest'
+    responses:
+      '201':
+        description: Tag created successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Tag'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '409':
+        description: Tag with this name or slug already exists
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+
+/tags/{tagId}:
+  get:
+    tags:
+      - Tags
+    summary: Get tag by ID
+    description: Get a single tag by ID
+    operationId: getTag
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/TagIdParam'
+    responses:
+      '200':
+        description: Tag details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Tag'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  delete:
+    tags:
+      - Tags
+    summary: Delete a tag
+    description: Delete a tag (requires tags:delete permission)
+    operationId: deleteTag
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/TagIdParam'
+    responses:
+      '204':
+        description: Tag deleted successfully
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+# ===========================================
+# CONTENTS (Unified Polymorphic Endpoint)
+# ===========================================
+
+/contents:
+  get:
+    tags:
+      - Contents
+    summary: List all contents
+    description: Get a paginated list of all contents with optional filters
+    operationId: listContents
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - name: contentType
+        in: query
+        description: Filter by content type
+        schema:
+          type: string
+          enum: [product, blog, page, category]
+          example: blog
+      - name: status
+        in: query
+        description: Filter by content status
+        schema:
+          type: string
+          enum: [draft, pending_review, in_review, changes_requested, approved, rejected, scheduled, published, archived]
+          example: published
+      - name: createdBy
+        in: query
+        description: Filter by creator user ID
+        schema:
+          type: string
+          format: uuid
+      - name: isFeatured
+        in: query
+        description: Filter by featured flag (for blog/product types)
+        schema:
+          type: boolean
+      - name: search
+        in: query
+        description: Search in title/name and slug
+        schema:
+          type: string
+    responses:
+      '200':
+        description: List of contents
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentListResponse'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+
+  post:
+    tags:
+      - Contents
+    summary: Create new content
+    description: |
+      Create new content of a specific type. The contentType field determines
+      which type-specific fields are required.
+
+      For blog: title, body are required
+      For product: name, price are required (future)
+    operationId: createContent
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateContentRequest'
+    responses:
+      '201':
+        description: Content created successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentWithTypeData'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '409':
+        description: Content with this slug already exists for the locale
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+
+/contents/{contentId}:
+  get:
+    tags:
+      - Contents
+    summary: Get content by ID
+    description: Get a single content with optional type-specific data population
+    operationId: getContent
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/ContentIdParam'
+      - name: populate
+        in: query
+        description: Include type-specific data in response
+        schema:
+          type: boolean
+          default: true
+    responses:
+      '200':
+        description: Content details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentWithTypeData'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  patch:
+    tags:
+      - Contents
+    summary: Update content
+    description: |
+      Update content fields. Only provided fields are updated.
+      Cannot change contentType after creation.
+    operationId: updateContent
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/ContentIdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateContentRequest'
+    responses:
+      '200':
+        description: Content updated successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentWithTypeData'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '409':
+        description: Slug already exists for another content in same locale
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+
+  delete:
+    tags:
+      - Contents
+    summary: Delete content
+    description: Soft delete content (sets deletedAt timestamp)
+    operationId: deleteContent
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/ContentIdParam'
+    responses:
+      '204':
+        description: Content deleted successfully
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+# ===========================================
+# CONTENT TAGS
+# ===========================================
+
+/contents/{contentId}/tags:
+  get:
+    tags:
+      - Contents
+    summary: Get content tags
+    description: List all tags assigned to a content
+    operationId: getContentTags
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/ContentIdParam'
+    responses:
+      '200':
+        description: List of tags for the content
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Tag'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  post:
+    tags:
+      - Contents
+    summary: Add tags to content
+    description: Assign one or more tags to a content
+    operationId: addContentTags
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/ContentIdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AssignTagsRequest'
+    responses:
+      '200':
+        description: Tags assigned successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Tag'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  delete:
+    tags:
+      - Contents
+    summary: Remove tags from content
+    description: Remove one or more tags from a content
+    operationId: removeContentTags
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/ContentIdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RemoveTagsRequest'
+    responses:
+      '200':
+        description: Tags removed successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Tag'
+      '400':
+        $ref: '#/components/responses/ValidationError'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+# ===========================================
+# CONTENT VERSIONS
+# ===========================================
+
+/contents/{contentId}/versions:
+  get:
+    tags:
+      - Content Versions
+    summary: List content versions
+    description: Get version history for a content
+    operationId: listContentVersions
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/ContentIdParam'
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+    responses:
+      '200':
+        description: List of content versions
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentVersionListResponse'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+  post:
+    tags:
+      - Content Versions
+    summary: Create content version
+    description: |
+      Manually create a version snapshot of the current content state.
+      Useful before making significant changes or for checkpoint purposes.
+    operationId: createContentVersion
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/ContentIdParam'
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateVersionRequest'
+    responses:
+      '201':
+        description: Version created successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentVersion'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+/contents/{contentId}/versions/{versionId}:
+  get:
+    tags:
+      - Content Versions
+    summary: Get specific version
+    description: Get a specific version snapshot with its data
+    operationId: getContentVersion
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/ContentIdParam'
+      - $ref: '#/components/parameters/VersionIdParam'
+    responses:
+      '200':
+        description: Version details with data snapshot
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentVersionWithData'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+/contents/{contentId}/versions/{versionId}/restore:
+  post:
+    tags:
+      - Content Versions
+    summary: Restore content to version
+    description: |
+      Restore content to a previous version. Creates a new version with the
+      restored data and increments the version number.
+    operationId: restoreContentVersion
+    security:
+      - bearerAuth: []
+    parameters:
+      - $ref: '#/components/parameters/ContentIdParam'
+      - $ref: '#/components/parameters/VersionIdParam'
+    responses:
+      '200':
+        description: Content restored successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentWithTypeData'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '404':
+        $ref: '#/components/responses/NotFound'
+
+# ===========================================
+# COMPONENTS
+# ===========================================
+
+components:
+  parameters:
+    TagIdParam:
+      name: tagId
+      in: path
+      required: true
+      description: Tag UUID
+      schema:
+        type: string
+        format: uuid
+
+    ContentIdParam:
+      name: contentId
+      in: path
+      required: true
+      description: Content UUID
+      schema:
+        type: string
+        format: uuid
+
+    VersionIdParam:
+      name: versionId
+      in: path
+      required: true
+      description: Version UUID
+      schema:
+        type: string
+        format: uuid
+
+    PageParam:
+      name: page
+      in: query
+      description: Page number (1-indexed)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    LimitParam:
+      name: limit
+      in: query
+      description: Items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+
+  schemas:
+    # ------------------------------------
+    # Tags
+    # ------------------------------------
+    Tag:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          example: Technology
+        slug:
+          type: string
+          example: technology
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateTagRequest:
+      type: object
+      required:
+        - name
+        - slug
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Technology
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-z0-9-]+$'
+          example: technology
+
+    TagListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    AssignTagsRequest:
+      type: object
+      required:
+        - tagIds
+      properties:
+        tagIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          example:
+            - 550e8400-e29b-41d4-a716-446655440001
+
+    RemoveTagsRequest:
+      type: object
+      required:
+        - tagIds
+      properties:
+        tagIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          example:
+            - 550e8400-e29b-41d4-a716-446655440001
+
+    # ------------------------------------
+    # Content Base
+    # ------------------------------------
+    Content:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        contentType:
+          type: string
+          enum: [product, blog, page, category]
+          example: blog
+        status:
+          type: string
+          enum: [draft, pending_review, in_review, changes_requested, approved, rejected, scheduled, published, archived]
+          example: draft
+        slug:
+          type: string
+          example: my-first-blog-post
+        locale:
+          type: string
+          example: en
+        version:
+          type: integer
+          example: 1
+        isLatest:
+          type: boolean
+          example: true
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdBy:
+          $ref: '#/components/schemas/UserSummary'
+        updatedBy:
+          $ref: '#/components/schemas/UserSummary'
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ContentWithTypeData:
+      allOf:
+        - $ref: '#/components/schemas/Content'
+        - type: object
+          properties:
+            tags:
+              type: array
+              items:
+                $ref: '#/components/schemas/Tag'
+            blog:
+              $ref: '#/components/schemas/BlogData'
+              nullable: true
+              description: Present when contentType is 'blog'
+
+    ContentListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentWithTypeData'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ------------------------------------
+    # Blog Type-Specific Data
+    # ------------------------------------
+    BlogData:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: My First Blog Post
+        excerpt:
+          type: string
+          nullable: true
+          example: A brief introduction to my blog
+        body:
+          type: string
+          example: Full blog post content here...
+        featuredImageId:
+          type: string
+          format: uuid
+          nullable: true
+        readingTimeMinutes:
+          type: integer
+          nullable: true
+          example: 5
+        isFeatured:
+          type: boolean
+          example: false
+        seoTitle:
+          type: string
+          nullable: true
+        seoDescription:
+          type: string
+          nullable: true
+        seoKeywords:
+          type: string
+          nullable: true
+
+    # ------------------------------------
+    # Create/Update Content
+    # ------------------------------------
+    CreateContentRequest:
+      type: object
+      required:
+        - contentType
+        - slug
+      properties:
+        contentType:
+          type: string
+          enum: [blog]
+          description: Currently only 'blog' is supported
+          example: blog
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9-]+$'
+          example: my-first-blog-post
+        locale:
+          type: string
+          maxLength: 10
+          default: en
+          example: en
+        tagIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Optional tag IDs to assign on creation
+        # Blog-specific fields (required when contentType is 'blog')
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: My First Blog Post
+          description: Required for blog type
+        body:
+          type: string
+          minLength: 1
+          example: Full blog post content here...
+          description: Required for blog type
+        excerpt:
+          type: string
+          nullable: true
+          example: A brief introduction
+        isFeatured:
+          type: boolean
+          default: false
+        seoTitle:
+          type: string
+          maxLength: 255
+          nullable: true
+        seoDescription:
+          type: string
+          maxLength: 500
+          nullable: true
+        seoKeywords:
+          type: string
+          maxLength: 255
+          nullable: true
+
+    UpdateContentRequest:
+      type: object
+      properties:
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9-]+$'
+        locale:
+          type: string
+          maxLength: 10
+        # Blog-specific fields
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        body:
+          type: string
+          minLength: 1
+        excerpt:
+          type: string
+          nullable: true
+        isFeatured:
+          type: boolean
+        seoTitle:
+          type: string
+          maxLength: 255
+          nullable: true
+        seoDescription:
+          type: string
+          maxLength: 500
+          nullable: true
+        seoKeywords:
+          type: string
+          maxLength: 255
+          nullable: true
+
+    # ------------------------------------
+    # Content Versions
+    # ------------------------------------
+    ContentVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+          example: 1
+        changeSummary:
+          type: string
+          nullable: true
+          example: Initial version
+        createdBy:
+          $ref: '#/components/schemas/UserSummary'
+        createdAt:
+          type: string
+          format: date-time
+
+    ContentVersionWithData:
+      allOf:
+        - $ref: '#/components/schemas/ContentVersion'
+        - type: object
+          properties:
+            dataSnapshot:
+              type: object
+              description: Complete content state at this version
+              additionalProperties: true
+
+    ContentVersionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentVersion'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    CreateVersionRequest:
+      type: object
+      properties:
+        changeSummary:
+          type: string
+          maxLength: 500
+          example: Before major redesign
+
+    # ------------------------------------
+    # Shared
+    # ------------------------------------
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+          nullable: true
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 50
+        totalPages:
+          type: integer
+          example: 3
+
+    Error:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          example: 404
+        message:
+          type: string
+          example: Content not found
+        error:
+          type: string
+          example: Not Found
+
+    ValidationError:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        message:
+          type: array
+          items:
+            type: string
+          example:
+            - slug must match pattern ^[a-z0-9-]+$
+            - title must be a string
+        error:
+          type: string
+          example: Bad Request

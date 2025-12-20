@@ -10,12 +10,19 @@ import { validationSchema } from './config/env.validation';
 import { HealthController } from './health/health.controller';
 import { AuthModule } from './auth/auth.module';
 import { RbacModule } from './rbac/rbac.module';
+import { ContentModule } from './content/content.module';
 import { User } from './auth/entities/user.entity';
 import { Session } from './auth/entities/session.entity';
 import { Role } from './rbac/entities/role.entity';
 import { Permission } from './rbac/entities/permission.entity';
 import { RolePermission } from './rbac/entities/role-permission.entity';
 import { UserRole } from './rbac/entities/user-role.entity';
+import { Tag } from './content/entities/tag.entity';
+import { Content } from './content/entities/content.entity';
+import { Blog } from './content/entities/blog.entity';
+import { Product } from './content/entities/product.entity';
+import { ContentTag } from './content/entities/content-tag.entity';
+import { ContentVersion } from './content/entities/content-version.entity';
 
 @Module({
   imports: [
@@ -40,7 +47,20 @@ import { UserRole } from './rbac/entities/user-role.entity';
         dbName: config.get<string>('database.name'),
         user: config.get<string>('database.user'),
         password: config.get<string>('database.password'),
-        entities: [User, Session, Role, Permission, RolePermission, UserRole],
+        entities: [
+          User,
+          Session,
+          Role,
+          Permission,
+          RolePermission,
+          UserRole,
+          Tag,
+          Content,
+          Blog,
+          Product,
+          ContentTag,
+          ContentVersion,
+        ],
         debug: config.get<string>('nodeEnv') === 'development',
         allowGlobalContext: true,
         schemaGenerator: {
@@ -57,6 +77,7 @@ import { UserRole } from './rbac/entities/user-role.entity';
     TerminusModule,
     AuthModule,
     RbacModule,
+    ContentModule,
   ],
   controllers: [HealthController],
   providers: [],
