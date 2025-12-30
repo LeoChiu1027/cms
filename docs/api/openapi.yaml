@@ -95,11 +95,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationError'
         '409':
-          description: Email already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
 
   /auth/login:
     post:
@@ -289,11 +285,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
-          description: Role with this slug already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
 
   /roles/{roleId}:
     get:
@@ -520,11 +512,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
-          description: Permission with this slug already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
 
   /permissions/{permissionId}:
     get:
@@ -752,11 +740,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
-          description: Tag with this slug already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
 
   /tags/{tagId}:
     get:
@@ -937,11 +921,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
-          description: Blog with this slug already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
 
   /blogs/{blogId}:
     get:
@@ -998,11 +978,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Slug already exists for another blog
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
 
     delete:
       tags:
@@ -1224,6 +1200,461 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  # ===========================================
+  # WORKFLOWS
+  # ===========================================
+
+  /workflows:
+    get:
+      tags:
+        - Workflows
+      summary: List workflows
+      description: Get a paginated list of workflows with optional filters
+      operationId: listWorkflows
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: entityType
+          in: query
+          description: Filter by entity type
+          schema:
+            type: string
+            enum: [content]
+        - name: status
+          in: query
+          description: Filter by workflow status
+          schema:
+            type: string
+            enum: [draft, pending_review, in_review, changes_requested, approved, rejected]
+        - name: assignedTo
+          in: query
+          description: Filter by assigned reviewer (user ID)
+          schema:
+            type: string
+            format: uuid
+        - name: createdBy
+          in: query
+          description: Filter by requester (user ID)
+          schema:
+            type: string
+            format: uuid
+        - name: mine
+          in: query
+          description: If true, only show workflows created by or assigned to the current user
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of workflows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Workflows
+      summary: Create a workflow
+      description: Create a new workflow for content approval
+      operationId: createWorkflow
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkflowRequest'
+      responses:
+        '201':
+          description: Workflow created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workflows/{workflowId}:
+    get:
+      tags:
+        - Workflows
+      summary: Get workflow details
+      description: Get a single workflow with its approval history
+      operationId: getWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdParam'
+      responses:
+        '200':
+          description: Workflow details with approval history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowWithApprovals'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Workflows
+      summary: Cancel/withdraw a workflow
+      description: Cancel a pending workflow. Only the creator can cancel.
+      operationId: cancelWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdParam'
+      responses:
+        '204':
+          description: Workflow cancelled successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{workflowId}/submit:
+    post:
+      tags:
+        - Workflows
+      summary: Submit workflow for review
+      description: Move a draft workflow to pending_review status
+      operationId: submitWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdParam'
+      responses:
+        '200':
+          description: Workflow submitted for review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          description: Workflow is not in draft status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{workflowId}/claim:
+    post:
+      tags:
+        - Workflows
+      summary: Claim workflow for review
+      description: Assign the workflow to yourself and start reviewing
+      operationId: claimWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdParam'
+      responses:
+        '200':
+          description: Workflow claimed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          description: Workflow is not in pending_review status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{workflowId}/approve:
+    post:
+      tags:
+        - Workflows
+      summary: Approve a workflow
+      description: Approve the workflow and apply changes
+      operationId: approveWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalRequest'
+      responses:
+        '200':
+          description: Workflow approved and changes applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalResponse'
+        '400':
+          description: Workflow is not in a reviewable status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{workflowId}/reject:
+    post:
+      tags:
+        - Workflows
+      summary: Reject a workflow
+      description: Reject the workflow. A comment is required.
+      operationId: rejectWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectRequest'
+      responses:
+        '200':
+          description: Workflow rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          description: Missing comment or not in reviewable status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{workflowId}/request-changes:
+    post:
+      tags:
+        - Workflows
+      summary: Request changes on a workflow
+      description: Send the workflow back to the requester with feedback
+      operationId: requestChangesOnWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestChangesRequest'
+      responses:
+        '200':
+          description: Changes requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          description: Missing comment or not in reviewable status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{workflowId}/comment:
+    post:
+      tags:
+        - Workflows
+      summary: Add a comment to a workflow
+      description: Add a comment without changing the workflow status
+      operationId: commentOnWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentRequest'
+      responses:
+        '201':
+          description: Comment added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Approval'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{workflowId}/update-payload:
+    patch:
+      tags:
+        - Workflows
+      summary: Update workflow payload
+      description: Update the proposed changes (only in draft or changes_requested)
+      operationId: updateWorkflowPayload
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: The updated payload
+      responses:
+        '200':
+          description: Payload updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          description: Workflow not in editable status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================
+  # WORKFLOW CONFIGURATION
+  # ===========================================
+
+  /workflows/config:
+    get:
+      tags:
+        - Workflow Config
+      summary: List workflow configurations
+      description: Get workflow configuration for all entity types
+      operationId: listWorkflowConfigs
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of workflow configurations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workflows/config/{entityType}:
+    get:
+      tags:
+        - Workflow Config
+      summary: Get workflow configuration for entity type
+      operationId: getWorkflowConfig
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entityType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [content]
+      responses:
+        '200':
+          description: Workflow configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Workflow Config
+      summary: Update workflow configuration
+      description: Update workflow settings for an entity type
+      operationId: updateWorkflowConfig
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entityType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [content]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkflowConfigRequest'
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1315,6 +1746,15 @@ components:
         type: string
         format: uuid
 
+    WorkflowIdParam:
+      name: workflowId
+      in: path
+      required: true
+      description: Workflow UUID
+      schema:
+        type: string
+        format: uuid
+
   responses:
     Unauthorized:
       description: Not authenticated
@@ -1322,6 +1762,10 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 401
+            message: Unauthorized
+            error: Unauthorized
 
     Forbidden:
       description: Insufficient permissions
@@ -1329,6 +1773,10 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 403
+            message: You do not have permission to perform this action
+            error: Forbidden
 
     NotFound:
       description: Resource not found
@@ -1336,6 +1784,45 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 404
+            message: Resource not found
+            error: Not Found
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+          example:
+            statusCode: 400
+            message:
+              - email must be a valid email
+              - password must be at least 8 characters
+            error: Bad Request
+
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 409
+            message: Resource with this identifier already exists
+            error: Conflict
+
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 400
+            message: Invalid request
+            error: Bad Request
 
   schemas:
     RegisterRequest:
@@ -2253,3 +2740,247 @@ components:
         totalPages:
           type: integer
           example: 3
+
+    # ------------------------------------
+    # Workflow Schemas
+    # ------------------------------------
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        entityType:
+          type: string
+          enum: [content]
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+          description: null for CREATE operations
+        operation:
+          type: string
+          enum: [create, update, delete]
+        payload:
+          type: object
+          description: The data to apply when approved
+        currentStatus:
+          type: string
+          enum: [draft, pending_review, in_review, changes_requested, approved, rejected]
+        previousStatus:
+          type: string
+          nullable: true
+        assignedTo:
+          type: string
+          format: uuid
+          nullable: true
+        priority:
+          type: integer
+          default: 0
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WorkflowWithApprovals:
+      allOf:
+        - $ref: '#/components/schemas/Workflow'
+        - type: object
+          properties:
+            approvals:
+              type: array
+              items:
+                $ref: '#/components/schemas/Approval'
+            createdByUser:
+              $ref: '#/components/schemas/UserSummary'
+            assignedToUser:
+              $ref: '#/components/schemas/UserSummary'
+
+    Approval:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workflowId:
+          type: string
+          format: uuid
+        reviewerId:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [approve, reject, request_changes, comment]
+        comment:
+          type: string
+          nullable: true
+        fromStatus:
+          type: string
+        toStatus:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        reviewer:
+          $ref: '#/components/schemas/UserSummary'
+
+    WorkflowConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        entityType:
+          type: string
+          enum: [content]
+        requiresApproval:
+          type: boolean
+          default: true
+        autoApproveForRoles:
+          type: array
+          items:
+            type: string
+          description: Role slugs that bypass approval
+          example: [super-admin, admin]
+        minApprovers:
+          type: integer
+          default: 1
+        notifyOnSubmit:
+          type: boolean
+          default: true
+        notifyOnComplete:
+          type: boolean
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateWorkflowRequest:
+      type: object
+      required:
+        - entityType
+        - operation
+        - payload
+      properties:
+        entityType:
+          type: string
+          enum: [content]
+        entityId:
+          type: string
+          format: uuid
+          description: Required for update/delete, null for create
+        operation:
+          type: string
+          enum: [create, update, delete]
+        payload:
+          type: object
+          description: The proposed data
+        priority:
+          type: integer
+          default: 0
+        dueDate:
+          type: string
+          format: date-time
+
+    ApprovalRequest:
+      type: object
+      properties:
+        comment:
+          type: string
+          description: Optional approval comment
+          example: Looks good, approved!
+
+    ApprovalResponse:
+      type: object
+      properties:
+        workflow:
+          $ref: '#/components/schemas/Workflow'
+        entity:
+          type: object
+          description: The created/updated entity
+        message:
+          type: string
+          example: Content created successfully
+
+    RejectRequest:
+      type: object
+      required:
+        - comment
+      properties:
+        comment:
+          type: string
+          minLength: 1
+          description: Reason for rejection (required)
+          example: Content does not meet standards
+
+    RequestChangesRequest:
+      type: object
+      required:
+        - comment
+      properties:
+        comment:
+          type: string
+          minLength: 1
+          description: Feedback on required changes
+          example: Please add a more detailed description
+
+    CommentRequest:
+      type: object
+      required:
+        - comment
+      properties:
+        comment:
+          type: string
+          minLength: 1
+          example: I have a question about this content
+
+    UpdateWorkflowConfigRequest:
+      type: object
+      properties:
+        requiresApproval:
+          type: boolean
+        autoApproveForRoles:
+          type: array
+          items:
+            type: string
+        minApprovers:
+          type: integer
+          minimum: 1
+        notifyOnSubmit:
+          type: boolean
+        notifyOnComplete:
+          type: boolean
+
+    WorkflowListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Workflow'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'

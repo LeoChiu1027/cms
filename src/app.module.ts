@@ -11,6 +11,7 @@ import { HealthController } from './health/health.controller';
 import { AuthModule } from './auth/auth.module';
 import { RbacModule } from './rbac/rbac.module';
 import { ContentModule } from './content/content.module';
+import { WorkflowModule } from './workflow/workflow.module';
 import { User } from './auth/entities/user.entity';
 import { Session } from './auth/entities/session.entity';
 import { Role } from './rbac/entities/role.entity';
@@ -23,6 +24,11 @@ import { Blog } from './content/entities/blog.entity';
 import { Product } from './content/entities/product.entity';
 import { ContentTag } from './content/entities/content-tag.entity';
 import { ContentVersion } from './content/entities/content-version.entity';
+import { Workflow } from './workflow/entities/workflow.entity';
+import { Approval } from './workflow/entities/approval.entity';
+import { WorkflowAssignment } from './workflow/entities/workflow-assignment.entity';
+import { WorkflowConfig } from './workflow/entities/workflow-config.entity';
+
 
 @Module({
   imports: [
@@ -60,6 +66,10 @@ import { ContentVersion } from './content/entities/content-version.entity';
           Product,
           ContentTag,
           ContentVersion,
+          Workflow,
+          Approval,
+          WorkflowAssignment,
+          WorkflowConfig,
         ],
         debug: config.get<string>('nodeEnv') === 'development',
         allowGlobalContext: true,
@@ -78,8 +88,9 @@ import { ContentVersion } from './content/entities/content-version.entity';
     AuthModule,
     RbacModule,
     ContentModule,
+    WorkflowModule,
   ],
   controllers: [HealthController],
   providers: [],
 })
-export class AppModule {}
+export class AppModule { }
