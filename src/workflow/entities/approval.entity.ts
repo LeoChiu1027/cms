@@ -9,7 +9,7 @@ import {
 } from '@mikro-orm/core';
 import { randomUUID } from 'crypto';
 import { User } from '../../auth/entities/user.entity';
-import { Workflow } from './workflow.entity';
+import type { Workflow } from './workflow.entity';
 import { ApprovalAction, WorkflowStatus } from '../enums/workflow.enum';
 
 @Entity({ tableName: 'approvals' })
@@ -23,7 +23,7 @@ export class Approval {
     @PrimaryKey({ type: 'uuid' })
     id: string = randomUUID();
 
-    @ManyToOne(() => Workflow)
+    @ManyToOne('Workflow')
     workflow!: Workflow;
 
     @ManyToOne(() => User)

@@ -12,7 +12,7 @@ import {
 import { randomUUID } from 'crypto';
 import { User } from '../../auth/entities/user.entity';
 import { EntityType, WorkflowStatus, WorkflowOperation } from '../enums/workflow.enum';
-import { Approval } from './approval.entity';
+import type { Approval } from './approval.entity';
 
 @Entity({ tableName: 'workflows' })
 @Index({ properties: ['entityType', 'entityId'] })
@@ -79,7 +79,7 @@ export class Workflow {
     @ManyToOne(() => User)
     createdBy!: User;
 
-    // Relations
-    @OneToMany(() => Approval, (approval) => approval.workflow)
+    // Relations - use string entity name to avoid circular dependency
+    @OneToMany('Approval', 'workflow')
     approvals = new Collection<Approval>(this);
 }
