@@ -736,4 +736,171 @@ describe('Workflows (e2e)', () => {
             expect(resubmitResponse.body.currentStatus).toBe('pending_review');
         });
     });
+
+    // =========================================
+    // Auto-Approve Tests
+    // =========================================
+
+    describe('Auto-Approve Flow', () => {
+        it('should auto-approve when requiresApproval is false', async () => {
+            // Configure workflow to not require approval
+            await request(app.getHttpServer())
+                .patch('/workflows/config/content')
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({ requiresApproval: false });
+
+            // Create workflow
+            const createResponse = await request(app.getHttpServer())
+                .post('/workflows')
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({
+                    entityType: 'content',
+                    operation: 'create',
+                    payload: { title: 'Auto-approve test' },
+                });
+            const workflowId = createResponse.body.id;
+
+            // Submit - should auto-approve
+            const submitResponse = await request(app.getHttpServer())
+                .post(`/workflows/${workflowId}/submit`)
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .expect(200);
+
+            expect(submitResponse.body.autoApproved).toBe(true);
+            expect(submitResponse.body.currentStatus).toBe('approved');
+            expect(submitResponse.body.completedAt).not.toBeNull();
+
+            // Clean up - reset config
+            await request(app.getHttpServer())
+                .patch('/workflows/config/content')
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({ requiresApproval: true });
+        });
+
+        it('should auto-approve when user has auto-approve role', async () => {
+            // Create an admin role with explicit slug
+            const roleResponse = await request(app.getHttpServer())
+                .post('/roles')
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({ name: 'Admin', slug: 'admin', description: 'Administrator role' });
+            const roleId = roleResponse.body.id;
+
+            // Assign role to creator
+            await request(app.getHttpServer())
+                .post(`/users/${creatorId}/roles`)
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({ roleIds: [roleId] });
+
+            // Configure workflow to auto-approve for admin role
+            await request(app.getHttpServer())
+                .patch('/workflows/config/content')
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({
+                    requiresApproval: true,
+                    autoApproveForRoles: ['admin']
+                });
+
+            // Create workflow
+            const createResponse = await request(app.getHttpServer())
+                .post('/workflows')
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({
+                    entityType: 'content',
+                    operation: 'create',
+                    payload: { title: 'Role-based auto-approve' },
+                });
+            const workflowId = createResponse.body.id;
+
+            // Submit - should auto-approve
+            const submitResponse = await request(app.getHttpServer())
+                .post(`/workflows/${workflowId}/submit`)
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .expect(200);
+
+            expect(submitResponse.body.autoApproved).toBe(true);
+            expect(submitResponse.body.currentStatus).toBe('approved');
+
+            // Clean up
+            await request(app.getHttpServer())
+                .patch('/workflows/config/content')
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({ autoApproveForRoles: [] });
+        });
+
+        it('should not auto-approve when user lacks auto-approve role', async () => {
+            // Configure workflow to auto-approve for different role
+            await request(app.getHttpServer())
+                .patch('/workflows/config/content')
+                .set('Authorization', `Bearer ${reviewerToken}`)
+                .send({
+                    requiresApproval: true,
+                    autoApproveForRoles: ['super-admin'] // role that reviewer doesn't have
+                });
+
+            // Create workflow as reviewer (who doesn't have super-admin role)
+            const createResponse = await request(app.getHttpServer())
+                .post('/workflows')
+                .set('Authorization', `Bearer ${reviewerToken}`)
+                .send({
+                    entityType: 'content',
+                    operation: 'create',
+                    payload: { title: 'No auto-approve' },
+                });
+            const workflowId = createResponse.body.id;
+
+            // Submit - should NOT auto-approve
+            const submitResponse = await request(app.getHttpServer())
+                .post(`/workflows/${workflowId}/submit`)
+                .set('Authorization', `Bearer ${reviewerToken}`)
+                .expect(200);
+
+            expect(submitResponse.body.autoApproved).toBe(false);
+            expect(submitResponse.body.currentStatus).toBe('pending_review');
+
+            // Clean up
+            await request(app.getHttpServer())
+                .patch('/workflows/config/content')
+                .set('Authorization', `Bearer ${reviewerToken}`)
+                .send({ autoApproveForRoles: [] });
+        });
+
+        it('should create approval record when auto-approved', async () => {
+            // Configure for auto-approve
+            await request(app.getHttpServer())
+                .patch('/workflows/config/content')
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({ requiresApproval: false });
+
+            // Create and submit
+            const createResponse = await request(app.getHttpServer())
+                .post('/workflows')
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({
+                    entityType: 'content',
+                    operation: 'create',
+                    payload: { title: 'With approval record' },
+                });
+            const workflowId = createResponse.body.id;
+
+            await request(app.getHttpServer())
+                .post(`/workflows/${workflowId}/submit`)
+                .set('Authorization', `Bearer ${creatorToken}`);
+
+            // Get workflow with approvals
+            const getResponse = await request(app.getHttpServer())
+                .get(`/workflows/${workflowId}`)
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .expect(200);
+
+            expect(getResponse.body.approvals.length).toBe(1);
+            expect(getResponse.body.approvals[0].action).toBe('approve');
+            expect(getResponse.body.approvals[0].comment).toContain('Auto-approved');
+
+            // Clean up
+            await request(app.getHttpServer())
+                .patch('/workflows/config/content')
+                .set('Authorization', `Bearer ${creatorToken}`)
+                .send({ requiresApproval: true });
+        });
+    });
 });

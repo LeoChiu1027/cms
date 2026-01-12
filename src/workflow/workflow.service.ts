@@ -7,6 +7,7 @@ import {
 import { EntityManager } from '@mikro-orm/core';
 import { Workflow } from './entities/workflow.entity';
 import { Approval } from './entities/approval.entity';
+import { WorkflowConfig } from './entities/workflow-config.entity';
 import { WorkflowStatus, ApprovalAction } from './enums/workflow.enum';
 import { CreateWorkflowDto } from './dto/create-workflow.dto';
 import { ApprovalActionDto, RejectDto, RequestChangesDto, CommentDto } from './dto/approval-action.dto';
@@ -92,7 +93,7 @@ export class WorkflowService {
         return workflow;
     }
 
-    async submit(id: string, user: User): Promise<Workflow> {
+    async submit(id: string, user: User): Promise<{ workflow: Workflow; autoApproved: boolean }> {
         const workflow = await this.findOne(id);
 
         if (workflow.createdBy.id !== user.id) {
@@ -106,12 +107,64 @@ export class WorkflowService {
             throw new BadRequestException('Workflow must be in draft or changes_requested status to submit');
         }
 
-        workflow.previousStatus = workflow.currentStatus;
-        workflow.currentStatus = WorkflowStatus.PENDING_REVIEW;
         workflow.submittedAt = new Date();
 
+        // Check workflow config for auto-approve
+        const shouldAutoApprove = await this.checkAutoApprove(workflow, user);
+
+        if (shouldAutoApprove) {
+            // Auto-approve: skip review process entirely
+            workflow.previousStatus = workflow.currentStatus;
+            workflow.currentStatus = WorkflowStatus.APPROVED;
+            workflow.completedAt = new Date();
+
+            // Create auto-approval record
+            const approval = this.em.create(Approval, {
+                workflow,
+                reviewer: user,
+                action: ApprovalAction.APPROVE,
+                comment: 'Auto-approved based on workflow configuration',
+                fromStatus: WorkflowStatus.DRAFT,
+                toStatus: WorkflowStatus.APPROVED,
+            });
+            this.em.persist(approval);
+        } else {
+            // Normal flow: move to pending review
+            workflow.previousStatus = workflow.currentStatus;
+            workflow.currentStatus = WorkflowStatus.PENDING_REVIEW;
+        }
+
         await this.em.flush();
-        return workflow;
+        return { workflow, autoApproved: shouldAutoApprove };
+    }
+
+    private async checkAutoApprove(workflow: Workflow, user: User): Promise<boolean> {
+        // Get workflow config for this entity type
+        const config = await this.em.findOne(WorkflowConfig, { entityType: workflow.entityType });
+
+        // No config means use defaults (requires approval)
+        if (!config) {
+            return false;
+        }
+
+        // If approval is not required, auto-approve
+        if (!config.requiresApproval) {
+            return true;
+        }
+
+        // Check if user has an auto-approve role
+        if (config.autoApproveForRoles && config.autoApproveForRoles.length > 0) {
+            // Get user's roles via the junction table
+            const userWithRoles = await this.em.findOne(User, { id: user.id }, { populate: ['userRoles.role'] });
+            if (userWithRoles?.userRoles) {
+                const userRoleSlugs = userWithRoles.userRoles.getItems().map((ur) => ur.role.slug);
+                if (userRoleSlugs.some(slug => config.autoApproveForRoles?.includes(slug))) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     async claim(id: string, user: User): Promise<Workflow> {

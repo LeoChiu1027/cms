@@ -93,8 +93,11 @@ export class WorkflowController {
         @Param('id', ParseUUIDPipe) id: string,
         @Req() req: Request & { user: User },
     ) {
-        const workflow = await this.workflowService.submit(id, req.user);
-        return this.workflowService.serializeWorkflow(workflow);
+        const { workflow, autoApproved } = await this.workflowService.submit(id, req.user);
+        return {
+            ...this.workflowService.serializeWorkflow(workflow),
+            autoApproved,
+        };
     }
 
     @Post(':id/claim')

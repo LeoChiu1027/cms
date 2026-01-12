@@ -13,7 +13,7 @@ import { WorkflowConfigController } from './workflow-config.controller';
     imports: [
         MikroOrmModule.forFeature([Workflow, Approval, WorkflowAssignment, WorkflowConfig]),
     ],
-    controllers: [WorkflowController, WorkflowConfigController],
+    controllers: [WorkflowConfigController, WorkflowController],
     providers: [WorkflowService, WorkflowConfigService],
     exports: [WorkflowService, WorkflowConfigService],
 })

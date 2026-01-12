@@ -126,6 +126,13 @@ expect.extend({
             `  ${key}: expected to match asymmetric matcher, got ${JSON.stringify(actualValue)}`,
           );
         }
+      } else if (typeof expectedValue === 'object' && expectedValue !== null) {
+        // Deep equality for objects/arrays (like JSONB fields)
+        if (JSON.stringify(actualValue) !== JSON.stringify(expectedValue)) {
+          mismatches.push(
+            `  ${key}: expected ${JSON.stringify(expectedValue)}, got ${JSON.stringify(actualValue)}`,
+          );
+        }
       } else if (actualValue !== expectedValue) {
         mismatches.push(
           `  ${key}: expected ${JSON.stringify(expectedValue)}, got ${JSON.stringify(actualValue)}`,
@@ -149,4 +156,4 @@ expect.extend({
   },
 });
 
-export {};
+export { };
