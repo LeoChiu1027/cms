@@ -125,6 +125,16 @@ describe('Blogs (e2e)', () => {
       expect(response.body.tags).toHaveLength(2);
       expect(response.body.tags.map((t: Tag) => t.name)).toContain('Tech');
       expect(response.body.tags.map((t: Tag) => t.name)).toContain('Tutorial');
+
+      // Database validation: verify tag associations
+      await expect({
+        entity: ContentTag,
+        where: { content: { id: response.body.id }, tag: { id: tag1.body.id } },
+      }).toExistInDb(em);
+      await expect({
+        entity: ContentTag,
+        where: { content: { id: response.body.id }, tag: { id: tag2.body.id } },
+      }).toExistInDb(em);
     });
 
     it('should return 400 when title is missing', async () => {
@@ -384,8 +394,9 @@ describe('Blogs (e2e)', () => {
       expect(response.body.title).toBe('Updated Title');
 
       // Database validation
-      const blog = await em.findOne(Blog, { content: { id: testBlogId } });
-      expect(blog?.title).toBe('Updated Title');
+      await expect({ entity: Blog, where: { content: { id: testBlogId } } }).toMatchInDb(em, {
+        title: 'Updated Title',
+      });
     });
 
     it('should update blog body', async () => {
@@ -398,6 +409,11 @@ describe('Blogs (e2e)', () => {
         .expect(200);
 
       expect(response.body.body).toBe('Updated content');
+
+      // Database validation
+      await expect({ entity: Blog, where: { content: { id: testBlogId } } }).toMatchInDb(em, {
+        body: 'Updated content',
+      });
     });
 
     it('should return 409 when updating to existing slug', async () => {
@@ -504,9 +520,10 @@ describe('Blogs (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(204);
 
-      // Verify soft delete (deletedAt is set)
-      const content = await em.findOne(Content, { id: blogToDeleteId });
-      expect(content?.deletedAt).toBeTruthy();
+      // Database validation: verify soft delete (deletedAt is set)
+      await expect({ entity: Content, id: blogToDeleteId }).toMatchInDb(em, {
+        deletedAt: expect.any(Date),
+      });
 
       // Verify GET returns 404
       await request(app.getHttpServer())

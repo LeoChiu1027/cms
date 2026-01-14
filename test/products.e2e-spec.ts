@@ -134,6 +134,16 @@ describe('Products (e2e)', () => {
         isFeatured: true,
         attributes: { color: 'red', size: 'large' },
       });
+
+      // Database validation: verify product with all fields
+      await expect({ entity: Product, where: { content: { id: response.body.id } } }).toMatchInDb(em, {
+        name: 'Full Product',
+        sku: 'SKU-001',
+        price: '149.99', // DB stores decimal as string
+        currency: 'EUR',
+        stockQuantity: 50,
+        isFeatured: true,
+      });
     });
 
     it('should create product with tags', async () => {
@@ -162,6 +172,16 @@ describe('Products (e2e)', () => {
       expect(response.body.tags).toHaveLength(2);
       expect(response.body.tags.map((t: Tag) => t.name)).toContain('Electronics');
       expect(response.body.tags.map((t: Tag) => t.name)).toContain('Sale');
+
+      // Database validation: verify tag associations
+      await expect({
+        entity: ContentTag,
+        where: { content: { id: response.body.id }, tag: { id: tag1.body.id } },
+      }).toExistInDb(em);
+      await expect({
+        entity: ContentTag,
+        where: { content: { id: response.body.id }, tag: { id: tag2.body.id } },
+      }).toExistInDb(em);
     });
 
     it('should return 400 when name is missing', async () => {
@@ -479,8 +499,9 @@ describe('Products (e2e)', () => {
       expect(response.body.name).toBe('Updated Product Name');
 
       // Database validation
-      const product = await em.findOne(Product, { content: { id: testProductId } });
-      expect(product?.name).toBe('Updated Product Name');
+      await expect({ entity: Product, where: { content: { id: testProductId } } }).toMatchInDb(em, {
+        name: 'Updated Product Name',
+      });
     });
 
     it('should update product price', async () => {
@@ -493,6 +514,11 @@ describe('Products (e2e)', () => {
         .expect(200);
 
       expect(response.body.price).toBe(79.99);
+
+      // Database validation
+      await expect({ entity: Product, where: { content: { id: testProductId } } }).toMatchInDb(em, {
+        price: '79.99', // DB stores decimal as string
+      });
     });
 
     it('should update product stock and featured status', async () => {
@@ -507,6 +533,12 @@ describe('Products (e2e)', () => {
 
       expect(response.body.stockQuantity).toBe(100);
       expect(response.body.isFeatured).toBe(true);
+
+      // Database validation
+      await expect({ entity: Product, where: { content: { id: testProductId } } }).toMatchInDb(em, {
+        stockQuantity: 100,
+        isFeatured: true,
+      });
     });
 
     it('should update product attributes', async () => {
@@ -519,6 +551,11 @@ describe('Products (e2e)', () => {
         .expect(200);
 
       expect(response.body.attributes).toEqual({ color: 'blue', material: 'metal' });
+
+      // Database validation
+      await expect({ entity: Product, where: { content: { id: testProductId } } }).toMatchInDb(em, {
+        attributes: { color: 'blue', material: 'metal' },
+      });
     });
 
     it('should return 409 when updating to existing slug', async () => {
@@ -644,9 +681,10 @@ describe('Products (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(204);
 
-      // Verify soft delete (deletedAt is set)
-      const content = await em.findOne(Content, { id: productToDeleteId });
-      expect(content?.deletedAt).toBeTruthy();
+      // Database validation: verify soft delete (deletedAt is set)
+      await expect({ entity: Content, id: productToDeleteId }).toMatchInDb(em, {
+        deletedAt: expect.any(Date),
+      });
 
       // Verify GET returns 404
       await request(app.getHttpServer())
